@@ -1,0 +1,13 @@
+REPOSITORY                TAG       IMAGE ID       CREATED          SIZE
+appuser/ubuntu-tmp-file   latest    1d28aab7a7e6   13 minutes ago   135MB
+hello-world               latest    feb5d9fea6a5   15 months ago    13.3kB
+ubuntu                    16.04     b6f507652425   15 months ago    135MB
+
+Задание со *:
+Сравните вывод двух следующих команд:
+> docker inspect <u_container_id>
+>docker inspect <u_image_id>
+На основе вывода команд объясните, чем отличается контейнер от образа.
+
+Image - что-то вроде неизменяемого снэпшота контейнера. Container - запущенный/остановленный экземпляр образа.
+Соответственно, у контейнера появляется дополнительный RW-слой, состояние, ограничения, сетевой адрес и т.п.
