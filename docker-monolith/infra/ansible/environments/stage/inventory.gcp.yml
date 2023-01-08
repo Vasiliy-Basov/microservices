@@ -1,0 +1,27 @@
+---
+# ansible-inventory --graph посмотреть наш инвентори
+# https://medium.com/@Temikus/ansible-gcp-dynamic-inventory-2-0-7f3531b28434
+# http://docs.testing.ansible.com/ansible/latest/collections/google/cloud/gcp_compute_inventory.html
+plugin: gcp_compute
+projects:
+  - infra-368512
+zones:
+  - "europe-west1-b"
+scopes:
+- https://www.googleapis.com/auth/compute
+filters:
+  - labels.env = stage # будем собирать inventory только для инстансов с меткой stage
+auth_kind: serviceaccount
+service_account_file: "/home/baggurd/packer.json"
+keyed_groups:
+  # <prefix><separator><key>
+  - prefix: ""
+    separator: ""
+    key: labels.ansible_group # Если у нас есть labels ansible_group то они попадут в inventory
+hostnames:
+  # List hosts by name instead of the default public ip
+  - name
+compose:
+  # Set an inventory parameter to use the Public IP address to connect to the host
+  # For Private ip use "networkInterfaces[0].networkIP"
+  ansible_host: networkInterfaces[0].accessConfigs[0].natIP
