@@ -1,2 +1,4 @@
----
-# tasks file for docker_host
+- name: Install Docker
+  ansible.builtin.include_tasks:
+    file: install_docker.yml
+  tags: docker

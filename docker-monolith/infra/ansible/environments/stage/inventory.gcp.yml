@@ -4,7 +4,7 @@
 # http://docs.testing.ansible.com/ansible/latest/collections/google/cloud/gcp_compute_inventory.html
 plugin: gcp_compute
 projects:
-  - infra-368512
+  - docker-372311
 zones:
   - "europe-west1-b"
 scopes:
@@ -12,7 +12,7 @@ scopes:
 filters:
   - labels.env = stage # будем собирать inventory только для инстансов с меткой stage
 auth_kind: serviceaccount
-service_account_file: "/home/baggurd/packer.json"
+service_account_file: "/home/baggurd/docker.json"
 keyed_groups:
   # <prefix><separator><key>
   - prefix: ""

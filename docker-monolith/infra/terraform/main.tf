@@ -16,15 +16,57 @@ provider "google" {
   region  = var.region
 }
 
-module "app" {
-  source          = "../modules/app"
-  zone            = var.zone
-  app_disk_image  = var.app_disk_image
-  public_key      = var.public_key
-  prod_or_stage   = var.prod_or_stage
-  private_key     = var.private_key
-  ssh_user        = var.ssh_user
-  internal_ip_db  = module.intip.internal_ip_db
-  internal_ip_app = module.intip.internal_ip_app
-  enable_provisioners = var.enable_provisioners
+resource "google_compute_instance" "app" {
+  # Количество инстансов которое мы будем создавать
+  count        = var.number_of_instances
+  # автоматически добавляем к каждому новому инстансу следующий номер
+  name         = "docker-host-${count.index}"
+  machine_type = "g1-small"
+  zone         = var.zone
+
+  # Определяем теги для правил Firewall если определяем тег http-server то gcp автоматически открывает порт 80
+  tags         = ["docker-machine"]
+
+  labels       = {
+    # определяем labels для ansible dynamic inventory
+    ansible_group = "docker-host"
+    env           = var.label_env
+  }
+
+  # определение загрузочного диска
+  boot_disk {
+    initialize_params {
+      image = var.disk_image # Также можно передать полное имя образа, например "reddit-base-1668709415"
+    }
+  }
+
+  # определение сетевого интерфейса
+  network_interface {
+    # сеть, к которой присоединить данный интерфейс
+    network    = "default"
+    # network_ip = var.internal_ip_app
+    # использовать ephemeral IP для доступа из Интернет
+    access_config {
+      nat_ip = "${element(google_compute_address.app_ip.*.address, count.index)}"
+    }
+    # Использовать настроенный нами внешний статический ip:
+    /* access_config {
+      nat_ip = google_compute_address.app_ip.address
+    } */
+  }
+  
+    # Параметры подключения провижионеров
+  /* connection {
+    type        = "ssh"
+    user        = "appuser"
+    agent       = false
+    private_key = file(var.private_key)
+    host = self.network_interface[0].access_config[0].nat_ip
+  } */
+}
+
+resource "google_compute_address" "app_ip" {
+  count  = var.number_of_instances
+  name   = "docker-host-${count.index}"
+  region = var.region
 }
