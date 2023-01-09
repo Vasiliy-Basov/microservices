@@ -16,6 +16,12 @@ provider "google" {
   region  = var.region
 }
 
+resource "google_compute_project_metadata" "my_ssh_key" {
+  metadata = {
+    ssh-keys = "appuser:${chomp(file(var.public_key))}"
+  }
+}
+
 resource "google_compute_instance" "app" {
   # Количество инстансов которое мы будем создавать
   count        = var.number_of_instances

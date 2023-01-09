@@ -34,5 +34,10 @@ variable "label_env" {
 
 variable "private_key_path" {
   description = "Path to the private key used for ssh provisioners"
-  default = "~/.ssh/id_rsa"
+  default = "~/.ssh/id_ecdsa"
+}
+
+variable "public_key" {
+  description = "Path to the private key used for ssh provisioners"
+  default = "~/.ssh/id_ecdsa.pub"
 }
