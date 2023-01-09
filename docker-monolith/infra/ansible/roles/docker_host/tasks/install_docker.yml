@@ -1,0 +1,38 @@
+---
+    - name: Install required system packages
+      ansible.builtin.apt:
+        update_cache: true # аналогично команде apt update
+        name: "{{ item }}"
+        state: present
+      loop:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - gnupg-agent
+        - software-properties-common
+        - python3-pip
+        - virtualenv
+        - python3-setuptools
+
+    - name: Add Docker GPG apt Key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker APT Repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+
+    - name: Update apt and install docker-ce
+      ansible.builtin.apt:
+        update_cache: true # аналогично команде apt update
+        name: "{{ item }}"
+        state: present
+      loop:
+        - docker-ce
+        - docker-ce-cli
+
+    - name: Install Docker Module for Python
+      ansible.builtin.pip:
+        name: docker

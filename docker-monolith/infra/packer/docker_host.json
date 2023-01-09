@@ -1,0 +1,38 @@
+{
+   "variables":
+        {
+        "project_id": null,
+        "source_image_family": null,
+        "machine_type": null,
+        "image_description": null,
+        "disk_size": null,
+        "network": null,
+        "tags": null
+        },
+
+  "builders": [
+        {
+        "type": "googlecompute",
+        "project_id": "{{user `project_id`}}",
+        "image_name": "docker-host-{{timestamp}}",
+        "image_family": "docker-host",
+        "source_image_family": "{{user `source_image_family`}}",
+        "zone": "europe-west1-b",
+        "ssh_username": "appuser",
+        "machine_type": "{{user `machine_type`}}",
+        "image_description": "{{user `image_description`}}",
+        "network": "{{user `network`}}",
+        "tags": "{{user `tags`}}",
+        "disk_type": "pd-standard",
+        "disk_size": "{{user `disk_size`}}"
+        }
+        ],
+
+ "provisioners": [
+        {
+        "type": "ansible",
+        "playbook_file": "ansible/playbooks/packer_docker_host.yml",
+        "ansible_env_vars": ["ANSIBLE_ROLES_PATH={{ pwd }}/ansible/roles"]
+        }
+        ]
+}

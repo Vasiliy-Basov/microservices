@@ -1,0 +1,5 @@
+---
+- name: Deploy docker container
+  ansible.builtin.include_tasks:
+    file: deploy_container.yml
+  tags: docker

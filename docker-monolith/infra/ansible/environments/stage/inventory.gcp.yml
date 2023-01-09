@@ -1,0 +1,28 @@
+---
+# ansible-inventory --graph посмотреть наш инвентори
+# https://medium.com/@Temikus/ansible-gcp-dynamic-inventory-2-0-7f3531b28434
+# http://docs.testing.ansible.com/ansible/latest/collections/google/cloud/gcp_compute_inventory.html
+plugin: gcp_compute
+projects:
+  - docker-372311
+zones:
+  - "europe-west1-b"
+scopes:
+- https://www.googleapis.com/auth/compute
+filters:
+  - labels.env = stage # будем собирать inventory только для инстансов с меткой stage
+auth_kind: serviceaccount
+service_account_file: "/home/baggurd/docker.json"
+keyed_groups:
+  # <prefix><separator><key>
+  - prefix: ""
+    separator: ""
+    # Если у нас есть labels ansible_group то они попадут в inventory (задем в terraform)
+    key: labels.ansible_group 
+hostnames:
+  # List hosts by name instead of the default public ip
+  - name
+compose:
+  # Set an inventory parameter to use the Public IP address to connect to the host
+  # For Private ip use "networkInterfaces[0].networkIP"
+  ansible_host: networkInterfaces[0].accessConfigs[0].natIP
