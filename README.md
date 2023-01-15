@@ -203,3 +203,301 @@ infra/ansible$ ansible-playbook playbooks/otus_reddit.yml
 
 Теперь приложение доступно по адресу:
 x.x.x.x:9292
+
+## HW#16 (docker-3)
+В данной работе мы:
+* научились описывать и собирать Docker-образы для сервисного приложения;
+* научились оптимизировать работу с Docker-образами;
+* опробовали запуск и работу приложения на основе Docker-образов;
+* оценили удобство запуска контейнеров при помощи docker run;
+* переопределили ENV через docker run;
+* оптимизировали размер контейнера (образ на базе Alpine).
+
+Работа велась в каталоге src, где под каждый сервис существует отдельная директория (comment, post-py, ui). Для MongoDB использовался образ из Docker Hub.
+
+Разбить наше приложение на несколько компонентов 
+Запустить наше микросервисное приложение 
+
+Линтер 
+```
+https://github.com/hadolint/hadolint 
+```
+ 
+
+Установка 
+```bash
+wget -O /bin/hadolint https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64 
+```
+ 
+
+Обновляем сертификаты если сменился ip 
+```bash
+docker-machine regenerate-certs docker-host 
+```
+
+Подключаемся к нашему хосту в GCP 
+```bash
+docker-machine ls 
+eval $(docker-machine env docker-host) 
+```
+Теперь наше приложение состоит из трех компонентов: 
+post-py - сервис отвечающий за написание постов 
+comment - сервис отвечающий за написание комментариев 
+ui - веб-интерфейс, работающий с другими сервисами 
+Для работы нашего приложения также требуется база данных MongoDB 
+Создаем в каждом каталоге три Dockerfile: 
+
+В соответствии с рекомендациями hadolint было внесены изменения:
+### ui/Dockerfile
+RUN apt-get update -qq && apt-get install -y build-essential
+=>
+RUN apt-get update -qq && apt-get install -y build-essential --no-install-recommends \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+ADD Gemfile* $APP_HOME/
+=>
+COPY Gemfile* $APP_HOME/
+
+ADD . $APP_HOME
+=>
+COPY . $APP_HOME
+
+### comment/Dockerfile
+RUN apt-get update -qq && apt-get install -y build-essential
+=>
+RUN apt-get update -qq && apt-get install -y build-essential --no-install-recommends \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+	
+ADD Gemfile* $APP_HOME/
+=>
+COPY Gemfile* $APP_HOME/
+
+ADD . $APP_HOME
+=>
+COPY . $APP_HOME
+
+### post-py/Dockerfile
+ADD . /app
+=>
+COPY . /app
+
+В Dockerfile со слайдов было обнаружено ряд проблем:
+1. image для post-py не собирался, т.к. отсутствовал build-base. Обновлённый dockerfile выглядит следующим образом:
+
+```dockerfile
+# Инструкция FROM указывает базовый образ, на основе которого мы строим свою сборку 
+FROM python:3.6.0-alpine 
+# Инструкция WORKDIR задает рабочую директорию при сборке все команды будут выполняться в этой рабочей директории 
+WORKDIR /app 
+# Копирует файлы из контекста в образ: 
+COPY . /app 
+# apk Менеджер пакетов для дистрибутива Alpine Linux. 
+# add установить новый пакет  
+# build-base это пакет который содержит gcc, musl-dev, and libc-dev обычно используется для сборки и компиляции другого программного обеспечения 
+RUN apk update && apk add --no-cache build-base=0.4-r1 \ 
+&& pip install -r /app/requirements.txt --no-cache-dir \ 
+&& apk del build-base 
+# Инструкция ENV задает переменные окружения при сборке 
+ENV POST_DATABASE_HOST post_db 
+ENV POST_DATABASE posts 
+# Инструкция ENTRYPOINT задает команду, которая (почти обязательно) выполняется при старте контейнера 
+ENTRYPOINT ["python3", "post_app.py"] 
+```
+
+2. образы для comment и ui не собирались из-за отсутствия одной записи в apt list:
+```
+W: Failed to fetch http://deb.debian.org/debian/dists/jessie-updates/InRelease  Unable to find expected entry 'main/binary-amd64/Packages' in Release file (Wrong sources.list entry or malformed file)
+E: Some index files failed to download. They have been ignored, or old ones used instead.
+```
+Поэтому пришлось использовать другую версию контейнера:
+FROM ruby:2.2
+=>
+FROM ruby:2.3
+
+После этого все образы успешно собрались:
+
+Не работает с последней версией mongodb так что нужно брать 
+```bash
+docker pull mongo:4.0-xenial 
+```
+Соберем образы с нашими сервисами: 
+В файл requirments нужно добавить markupsafe==1.1.1 
+```bash
+docker build -t vasiliybasov/post:1.0 ./post-py 
+docker build -t vasiliybasov/comment:1.0 ./comment 
+docker build -t vasiliybasov/ui:1.0 ./ui 
+```
+Создадим специальную сеть для приложения: 
+
+Эта сеть нужна чтобы соединять несколько docker контейнеров для коммуникации друг с другом. Без этой сети контейнеры не смогли бы общаться и должны были бы быть подключены через различные порты на хост-машине. Для удобства, в наших контейнерах использовались сетевые алиасы (отсылка к ним есть в ENV). Поскольку в сети по умолчанию алиасы недоступны, потребовалось создать отдельную bridge-сеть. 
+
+```bash
+docker network create reddit 
+```
+Запустим наши контейнеры: 
+
+--network-alias в команде docker build используется для назначения container's hostname внутри пользовательской сети. Например, если вы запускаете команду docker build --network-alias myalias . в папке, где находится ваш Dockerfile, это создаст образ и запустит контейнер с хостнеймом "myalias" в указанной вами сети. 
+
+Когда вы запускаете контейнер с этой опцией, он будет доступен для других контейнеров в той же сети с использованием указанного псевдонима. 
+
+Опция --network-alias полезна, когда вы хотите подключить несколько контейнеров вместе и хотите, чтобы они могли общаться между собой с использованием хостнейма, а не IP-адресов. 
+
+Важно понимать, что опция --network-alias относится только к хостнейму внутри пользовательской сети (reddit в нашем случае) 
+```bash
+docker run -d --network=reddit --network-alias=post_db --network-alias=comment_db mongo:4.0-xenial 
+docker run -d --network=reddit --network-alias=post vasiliybasov/post:1.0 
+docker run -d --network=reddit --network-alias=comment vasiliybasov/comment:1.0 
+docker run -d --network=reddit -p 9292:9292 vasiliybasov/ui:1.0 
+```
+
+Чтобы зайти внурь контейнера alpine
+```bash
+docker exec -it <container_name_or_id> sh 
+```
+
+Ошибки (Errors) 
+
+Смотрим ошибки в контейнерах 
+```bash
+docker logs <id container> 
+```
+Не работает с последней версией mongodb нужно брать  
+```bash
+docker pull mongo:4.0-xenial 
+```
+В файл requirments.txt post нужно добавить markupsafe==1.1.1 
+
+
+Задание со * (стр. 15) 
+
+Задание: Остановите контейнеры: docker kill $(docker ps -q) Запустите контейнеры с другими сетевыми алиасами. Адреса для взаимодействия контейнеров задаются через ENV-переменные внутри Dockerfile'ов. При запуске контейнеров (docker run) задайте им переменные окружения соответствующие новым сетевым алиасам, не пересоздавая образ. Проверьте работоспособность сервиса 
+
+Решение: Переопределить ENV мы можем при помощи флага -e: 
+```bash
+docker run -d --network=reddit --network-alias=post_db2 --network-alias=comment_db2 mongo:4.0-xenial 
+docker run -d --network=reddit --network-alias=post2 -e POST_DATABASE_HOST=post_db2 vasiliybasov/post 
+docker run -d --network=reddit --network-alias=comment2 -e COMMENT_DATABASE_HOST=comment_db2 vasiliybasov/comment:1.0 
+docker run -d --network=reddit -p 9292:9292 -e POST_SERVICE_HOST=post2 -e COMMENT_SERVICE_HOST=comment2 vasiliybasov/ui:1.0 
+```
+### Работа с образами
+Уменьшаем размер образа с помощью пересборки и установки из ubuntu16 и самостоятельно устанавливаем ruby  
+После внесения изменений в Dockerfile и пересборки образа:
+```dockerfile
+FROM ubuntu:16.04
+# -qq - quite mode with no output
+# build-essential это пакет обычно используется для сборки и компиляции другого программного обеспечения
+# содержит gcc, make, and g++
+RUN apt-get update -qq \
+    && apt-get install --no-install-recommends -y ruby-full ruby-dev build-essential \
+    && gem install bundler -v '1.17.2' --no-ri --no-rdoc \
+    # Delete the apt-get lists after installing something рекомендация hadolint
+    && apt-get clean \ 
+    && rm -rf /var/lib/apt/lists/*
+
+# создаем рабочий каталог /app
+ENV APP_HOME /app
+RUN mkdir $APP_HOME
+
+# Задаем рабочий каталог
+WORKDIR $APP_HOME
+
+# Копируем в рабочий каталог файлы которые начинаются с Gemfile
+# bundle install: Эта команда устанавливает зависимости прописаные в Gemfile и Gemfile.lock для Ruby 
+COPY Gemfile* $APP_HOME/
+RUN bundle install
+COPY . $APP_HOME
+
+# Инструкция ENV задает переменные окружения при сборке
+# The variables POST_SERVICE_HOST and POST_SERVICE_PORT are being set to post and 5000 respectively. 
+# В переменных указывается к каким хостам и по каким портам мы будем подключаться в созданной нами сети reddit т.е. post:5000 comment:9292 
+# Эти имена задаются ключем --network-alias=post при docker build, можем переопределять эти переменные при запуске контейнера docker run ключем -e
+ENV POST_SERVICE_HOST post
+ENV POST_SERVICE_PORT 5000
+ENV COMMENT_SERVICE_HOST comment
+ENV COMMENT_SERVICE_PORT 9292
+
+# Запускает команду при запуске контейнера (старт puma web server)
+CMD ["puma"]
+```
+
+Еше более существенное уменьшение образа:
+ui/Dockerfile 
+
+После перехода на Alpine образ уменьшился вдвое: 
+```dockerfile
+FROM alpine:3.9.4 
+# -qq - quite mode with no output 
+# build-essential это пакет обычно используется для сборки и компиляции другого программного обеспечения 
+# содержит gcc, make, and g++ 
+RUN RUN apk update && apk add --no-cache build-base ruby-full ruby-dev ruby-bundler \ 
+&& gem install bundler -v '1.17.2' --no-ri --no-rdoc 
+```
+
+Более полная оптимизация:
+- ruby вместо ruby-full (соответственно, нужно ставить отдельные компоненты вроде ruby-json);
+- комбинирование всех команд, связанных с установкой приложения, в одну инструкцию RUN, что позволяет удалить build-base и ruby-dev после сборки приложения.
+```dockerfile
+FROM alpine:3.9.4
+
+ENV APP_HOME /app
+RUN mkdir $APP_HOME
+WORKDIR $APP_HOME
+COPY . $APP_HOME
+
+# -qq - quite mode with no output
+# build-essential это пакет обычно используется для сборки и компиляции другого программного обеспечения
+# содержит gcc, make, and g++
+RUN apk update && apk add --no-cache build-base ruby ruby-json ruby-dev ruby-bundler \
+	&& gem install bundler -v '1.17.2' --no-ri --no-rdoc \
+	&& bundle install \
+	&& apk del build-base ruby-dev
+
+# Инструкция ENV задает переменные окружения при сборке
+# The variables POST_SERVICE_HOST and POST_SERVICE_PORT are being set to post and 5000 respectively. 
+# В переменных указывается к каким хостам и по каким портам мы будем подключаться в созданной нами сети reddit т.е. post:5000 comment:9292 
+# Эти имена задаются ключем --network-alias=post при docker build, можем переопределять эти переменные при запуске контейнера docker run ключем -e
+ENV POST_SERVICE_HOST post
+ENV POST_SERVICE_PORT 5000
+ENV COMMENT_SERVICE_HOST comment
+ENV COMMENT_SERVICE_PORT 9292
+
+# Запускает команду при запуске контейнера (старт puma web server)
+CMD ["puma"]
+```
+
+В целом, миграция с ruby-full на ruby+отдельные компоненты не даёт большого выйгрыша в дисковом пространстве. При этом поддержка образа усложняется, поскольку при включении в приложение дополнительного компонента (в процессе разработки) придётся выполнять пересборку. Но для эксперимента сгодится.
+
+Comment уменьшаем соответствующим образом. См Dockerfile.1 Dockerfile
+
+Volume 
+
+Если перезапустить контейнеры то все данные базы данных пропадут. Что бы данные сохранялись нужно использовать volume  
+Создаем volume 
+```bash
+docker volume create reddit_db 
+```
+ 
+
+И подключим его к контейнеру с MongoDB... 
+Команда -v reddit_db:/data/db 
+Выключим старые копии контейнеров: 
+```bash
+docker kill $(docker ps -q) 
+```
+ 
+Запускаем 
+```bash
+docker run -d --network=reddit --network-alias=post_db --network-alias=comment_db -v reddit_db:/data/db mongo:4.0-xenial 
+docker run -d --network=reddit --network-alias=post vasiliybasov/post:1.0 
+docker run -d --network=reddit --network-alias=comment vasiliybasov/comment:2.1 
+docker run -d --network=reddit -p 9292:9292 vasiliybasov/ui:2.2 
+```
+ 
+Делаем рестарт и проверяем что база не пропала 
+```bash
+docker restart $(docker ps -q) 
+```
+
+
+
+

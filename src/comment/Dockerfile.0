@@ -1,16 +1,21 @@
 # Инструкция FROM указывает базовый образ
-FROM alpine:3.9.4
+FROM ruby:2.3
+# -qq - quite mode with no output
+# build-essential это пакет обычно используется для сборки и компиляции другого программного обеспечения
+# содержит gcc, make, and g++
+RUN apt-get update -qq && apt-get install --no-install-recommends -y build-essential=12.3 \
+    # Delete the apt-get lists after installing something рекомендация hadolint
+    && apt-get clean \ 
+    && rm -rf /var/lib/apt/lists/*
 
 ENV APP_HOME /app
 RUN mkdir $APP_HOME
 WORKDIR $APP_HOME
-COPY . $APP_HOME
 
-RUN apk update && apk add --no-cache build-base ruby ruby-json ruby-bigdecimal ruby-dev ruby-bundler \
-	&& gem install bundler -v '1.17.2' --no-ri --no-rdoc \
+COPY Gemfile* $APP_HOME/
 # bundle install: Эта команда устанавливает зависимости прописаные в Gemfile и Gemfile.lock для Ruby
-	&& bundle install \
-	&& apk del build-base ruby-dev
+RUN bundle install
+COPY . $APP_HOME
 
 # The variables COMMENT_DATABASE_HOST and COMMENT_DATABASE are being set to comment_db and comments respectively. 
 # В переменных указывается к каким хостам и по каким портам мы будем подключаться в созданной нами сети reddit т.е. comment_db

@@ -1,17 +1,22 @@
 FROM alpine:3.9.4
-
-ENV APP_HOME /app
-RUN mkdir $APP_HOME
-WORKDIR $APP_HOME
-COPY . $APP_HOME
-
 # -qq - quite mode with no output
 # build-essential это пакет обычно используется для сборки и компиляции другого программного обеспечения
 # содержит gcc, make, and g++
-RUN apk update && apk add --no-cache build-base ruby ruby-json ruby-dev ruby-bundler \
-	&& gem install bundler -v '1.17.2' --no-ri --no-rdoc \
-	&& bundle install \
-	&& apk del build-base ruby-dev
+RUN RUN apk update && apk add --no-cache build-base ruby-full ruby-dev ruby-bundler \
+	&& gem install bundler -v '1.17.2' --no-ri --no-rdoc
+
+# создаем рабочий каталог /app
+ENV APP_HOME /app
+RUN mkdir $APP_HOME
+
+# Задаем рабочий каталог
+WORKDIR $APP_HOME
+
+# Копируем в рабочий каталог файлы которые начинаются с Gemfile
+# bundle install: Эта команда устанавливает зависимости прописаные в Gemfile и Gemfile.lock для Ruby 
+COPY Gemfile* $APP_HOME/
+RUN bundle install
+COPY . $APP_HOME
 
 # Инструкция ENV задает переменные окружения при сборке
 # The variables POST_SERVICE_HOST and POST_SERVICE_PORT are being set to post and 5000 respectively. 
