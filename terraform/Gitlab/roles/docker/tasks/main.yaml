@@ -1,0 +1,46 @@
+---
+- name: Install aptitude using apt
+  apt: name=aptitude state=present update_cache=yes force_apt_get=yes
+
+- name: Install required system packages for Docker
+  apt: name={{ docker_required_packages }} state=present update_cache=yes
+
+- name: Add Docker GPG key
+  apt_key:
+    url: "{{ docker_gpg_url }}"
+    state: present
+
+- name: Add Docker repository
+  apt_repository:
+    repo: "{{ docker_repo }}"
+    state: present
+
+- name: Install Docker
+  apt: name={{ docker_packges }} state=present update_cache=yes
+
+- name: Install Python Docker module
+  pip:
+    name: docker
+
+- name: Add adminstrator to docker group
+  user:
+    name: "{{ admin_user }}"
+    groups: docker
+    append: true
+
+- name: Install Docker Compose
+  get_url:
+    url: "{{ docker_compose_url }}"
+    dest: /usr/local/bin/docker-compose
+    mode: u+x,g+x,o+x
+
+- name: Create the GitLab directories
+  file:
+    path: /srv/gitlab/config /srv/gitlab/data /srv/gitlab/logs
+    state: directory
+    mode: 0755
+
+- name: Create the docker-compose.yml file
+  file:
+    path: /srv/gitlab/docker-compose.yml
+    state: touch

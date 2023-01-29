@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../Infra"
+		},
+		{
+			"path": "../gitlab/example"
+		}
+	],
+	"settings": {}
+}

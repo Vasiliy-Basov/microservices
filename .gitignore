@@ -1,3 +1,2 @@
 /.idea/
-/docker-monolith/infra/stage/terraform.tfvars
-/docker-monolith/infra/terraform/terraform.tfvars
+*.tfvars

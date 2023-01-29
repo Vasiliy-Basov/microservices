@@ -1,0 +1,174 @@
+# Берем контейнер с установленным ruby для тестов приложения на ruby
+image: ruby:2.4.2
+
+# В кэш мы можем помещать каталоги которые будут кэшироваться первый раз и потом они не будут загружаться а использоваться из кэша
+# cache:
+#   key это имя кэша и CI будет обращаться к кэшу по имени. CI_BUILD_REF_NAME это имя нашего branch. путь - node_modules/ то что
+#   будет кэшироваться. Если мы хотим изменить кэш то нужно поменять строку key.
+#   key: "$CI_BUILD_REF_NAME node:ruby:2.4.2"
+#   paths:
+#   - node_modules/
+
+stages:
+  - build
+  - test
+  - review
+  - stage
+  - production
+
+# В данном случае, в переменной DATABASE_URL указан адрес подключения 'mongodb://mongo/user_posts', 
+# который указывает на то, что база данных MongoDB находится на хосте "mongo" и используется для хранения данных "user_posts"
+# Сама база устанавливается как служба в блоке test_unit_job 
+variables:
+  DATABASE_URL: 'mongodb://mongo/user_posts'
+
+# Переходим в каталог reddit и устанавливаем зависимости для нашего приложения 
+before_script:
+  - cd reddit
+# Не работает с image docker:dind поэтому переносим настройку в блок test_unit_job    
+#  - bundle install
+
+# !!! Если нужно собирать docker images: runner д.б. запущен с опцией --privileged
+# для этого неоюходимо в конфигурационный файл runner вписать что он работает в привилигированном режиме
+# Файл находится по пути: nano /srv/gitlab-runner/config/config.toml на хосте где запущен docker контейнер с раннером
+# ------
+# [[runners]]
+#   name = "my-runner"
+#   url = "http://35.205.50.178/"
+#   executor = "docker"
+#   ...
+#   [runners.docker]
+#     ...
+#     privileged = true
+#     ...
+# ------
+
+build_job:
+  image: docker:stable
+  stage: build
+  tags:
+    - external
+  # Импользуем образ "dind" сокращение от "Docker in Docker". 
+  # Этот образ используется для запуска докер-контейнера внутри другого докер-контейнера, 
+  # что позволяет использовать докер-функциональность внутри среды CI/CD  
+  services:
+    - docker:dind
+  # Если не указываем эти переменные получаем ошибку Cannot connect to the Docker daemon at tcp://docker:2375. Is the docker daemon running?  
+  variables:
+    DOCKER_DRIVER: overlay2
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    # Переменные $CI_REGISTRY_PASSWORD, $CI_REGISTRY_USER, $CI_REGISTRY прописываем в settings - Ci/CD Variables
+    # Отключаем опцию Protected. (Если опция включена получаем ошибку Get https://registry-1.docker.io/v2/: unauthorized: incorrect username or password)
+    # Такая ошибка Error: Cannot perform an interactive login from a non TTY device бывает если мы вводим
+    # docker login -u $DOCKER_REPO_USER -p $DOCKER_REPO_PASS вместо echo. 
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+  script:
+    # Здесь вместо . нужно указать каталог где находится Dockerfile (reddit/) 
+    # Иначe получаем ошибку (unable to prepare context: unable to evaluate symlinks in Dockerfile path: lstat /builds/homework/example/Dockerfile: no such file or directory)
+    - docker build -t $CI_REGISTRY_USER/reddit:$CI_COMMIT_SHORT_SHA reddit/
+    - docker push $CI_REGISTRY_USER/reddit:$CI_COMMIT_SHORT_SHA
+
+# Блок services в файле .gitlab-ci.yml определяет, какие службы должны быть запущены 
+# во время выполнения определенной стадии pipeline. В данном случае строчка - mongo:latest означает, 
+# что во время выполнения стадии test должна быть запущена служба MongoDB в последней доступной версии (latest). 
+# Это необходимо для того, чтобы можно было выполнить тесты, основанные на базе данных MongoDB, 
+# которая будет доступна для подключения во время выполнения скрипта ruby simpletest.rb. GitLab берет службу MongoDB из образов Docker. 
+# В данном случае, служба MongoDB скачивается из официального репозитория Docker Hub при первом запуске стадии test с тегом "latest"
+test_unit_job:
+  stage: test
+  tags:
+    - external
+  # List of services to be started before the job runs    
+  services:
+    - mongo:latest
+  script:
+    # Install the necessary dependencies
+    - bundle install
+    # Run the unit tests
+    - ruby simpletest.rb 
+
+test_integration_job:
+  stage: test
+  tags:
+    - external
+  script:
+    - echo 'Testing 2'
+
+# Deploy stage
+deploy:
+  # Stage name
+  stage: review
+  # тег используется для запуска на раннерах с таким же тегом
+  tags:
+    - external
+  # Script to run for this stage    
+  script:
+    # Start the SSH agent to manage the SSH keys
+    - eval $(ssh-agent -s)
+    # Add the private SSH key to the SSH agent. tr -d '\r' удаляет return (\r) из файла. (Windows окончание строки)
+    # Указываем base64 --decode чтобы без ошибок подхватывался ssh ключ. В этом случае сам ключ мы должны брать таким образом: sudo cat ~/.ssh/appuser_ed25519 | base64 -w0 
+    - echo "$CI_PRIVATE_KEY" | base64 --decode | tr -d '\r' | ssh-add -
+    # Create the .ssh directory and set proper permissions
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    # Disable strict host key checking in SSH config
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+    # SSH into the GCP VM and execute commands to pull the Docker image, stop and remove the existing container, and run a new container
+    - ssh $CI_USER@$HOST "docker stop reddit || true && docker rm reddit || true && docker pull $CI_REGISTRY_USER/reddit:$CI_COMMIT_SHORT_SHA && (docker network inspect reddit > /dev/null 2>&1 || docker network create reddit) && (docker volume inspect reddit_db &>/dev/null || docker volume create reddit_db) && docker run -d --network=reddit --network-alias=mongo -v reddit_db:/data/db mongo:4.0-xenial && docker run --name reddit -d --network=reddit --restart unless-stopped -p 9292:9292 $CI_REGISTRY_USER/reddit:$CI_COMMIT_SHORT_SHA"
+  # URL для доступа к среде dev задается в переменной url: http://$HOST:9292 Этот URL может использоваться для доступа к приложению и его тестирования в рамках этой среды.
+  environment:
+    name: dev
+    url: http://$HOST:9292
+  only:
+    - branches
+  except:
+    - master        
+
+# Этот job определяет динамическое окружение для каждой ветки в репозитории, кроме ветки master
+# Теперь, на каждую ветку в git отличную от master Gitlab CI будет определять новое окружение.
+branch review:
+  stage: review
+  tags:
+    - external
+  script: echo "Deploy to $CI_ENVIRONMENT_SLUG"
+  environment:
+    name: branch/$CI_COMMIT_REF_NAME
+    url: http://$CI_ENVIRONMENT_SLUG.example.com
+  only:
+    - branches
+  except:
+    - master    
+
+
+# Для того чтобы эти стаджи работали нужно добавлять соответствующие шагу review стадии в блок script.
+staging:
+  stage: stage
+  tags:
+    - external  
+  when: manual
+# Выражение only: /^\d+\.\d+\.\d+/ используется в конфигурации GitLab CI/CD, чтобы указать, 
+# что данная работа должна выполняться только в том случае, если ветка, которую мы пушим, соответствует регулярному выражению.
+# В данном случае регулярное выражение /^\d+\.\d+\.\d+/ означает, что имя ветки должно начинаться с последовательности цифр, разделенных точками. 
+# Например, 1.0.0, 2.3.5, 10.2.7. (Т.е. только в случае указания соответствующего тега x.x.x при push на gitlab)
+  only:
+    - /^\d+\.\d+\.\d+/
+  script:
+    - echo 'Deploy'
+  environment:
+    name: stage
+    url: https://beta.example.com
+
+production:
+  stage: production
+  tags:
+    - external 
+  when: manual
+  only:
+    - /^\d+\.\d+\.\d+/
+  script:
+    - echo 'Deploy'
+  environment:
+    name: production
+    url: https://example.com
