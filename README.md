@@ -1142,6 +1142,515 @@ services:
 
 В данном случае sshfs_path_to_ui, sshfs_path_to_post-py, sshfs_path_to_comment это пути на удаленной машине 
 
+## HomeWork 19 - Устройство Gitlab CI. Построение процесса непрерывной поставки
+Ставим сервер с помощью terraform и ansible 
+/home/baggurd/microservices/terraform/Gitlab
+
+Для запуска Gitlab CI мы будем использовать omnibus-установку, у
+этого подхода есть как свои плюсы, так и минусы.
+Основной плюс для нас в том, что мы можем быстро запустить сервис
+и сконцентрироваться на процессе непрерывной поставки.
+Минусом такого типа установки является то, что такую инсталляцию
+тяжелее эксплуатировать и дорабатывать, но долговременная
+эксплуатация этого сервиса не входит в наши цели.
+Более подробно об этом опять же в документации
+https://docs.gitlab.com/omnibus/README.html
+https://docs.gitlab.com/omnibus/docker/README.html
+
+В ansible уже прописаны эти настройки для gitlab:
+# mkdir -p /srv/gitlab/config /srv/gitlab/data /srv/gitlab/logs
+# cd /srv/gitlab/
+# touch docker-compose.yml
+
+Заполняем docker-compose.yml:
+```
+version: "3"
+
+services:
+  web:
+    image: 'gitlab/gitlab-ce:latest'
+    restart: always
+    hostname: 'gitlab.example.com'
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://34.77.7.178'
+    ports:
+      - '80:80'
+      - '443:443'
+      - '2222:22'
+    volumes:
+      - '/srv/gitlab/config:/etc/gitlab'
+      - '/srv/gitlab/logs:/var/log/gitlab'
+      - '/srv/gitlab/data:/var/opt/gitlab'
+
+```
+Для установки начального пароля нужно прописать переменные
+
+```
+GITLAB_ROOT_EMAIL="root@local"
+GITLAB_ROOT_PASSWORD="gitlab_root_password" 
+EXTERNAL_URL= 'http://34.77.7.178'
+```
+
+Запускаем gitlab
+```
+docker-compose up -d
+```
+
+Для первого запуска Gitlab CI необходимо подождать
+несколько минут, пока он стартует можно почитать,
+откуда мы взяли содержимое файла docker-compose.yml
+https://docs.gitlab.com/omnibus/docker/README.html#install-gitlab-using-docker-compose
+
+
+Или после запуска контейнера заходим внутрь 
+```
+docker exec -it 522e6ca5a5c2 bash
+```
+И устанавливаем пароль на root:
+```
+sudo gitlab-rake "gitlab:password:reset"
+```
+или можем посмотреть назначенный пароль 
+```
+cat etc/gitlab/initial_root_password
+```
+Заходим
+http://<your-vm-ip>
+
+Создаем новую группу 
+Создаем проект
+
+На клентской машине с кодом создаем папку с проектом
+В папке выполняем
+```
+git clone http://34.77.7.178/homework/example.git
+git checkout -b gitlab-ci-1
+git remote add gitlab http://34.77.7.178/homework/example.git
+git push gitlab gitlab-ci-1
+```
+Создаем файл .gitlab-ci.yml
+Вписываем в него Pipeline
+Пушим файл в репо
+
+```
+git add .gitlab-ci.yml
+git commit -m 'add pipeline definition'
+git push gitlab gitlab-ci-1
+```
+Теперь если перейти в раздел CI/CD мы увидим, что пайплайн готов к запуску
+Но находится в статусе pending / stuck так как у нас нет runner
+Запустим Runner и зарегистрируем его в интерактивном режиме
+
+Runner
+
+Перед тем, как запускать и регистрировать runner нужно получить токен
+Settings - CI/CD - Runners - Expand - 
+Нужно скопировать, токен пригодится нам при регистрации
+
+
+Запускаем Runner, если запускать на том же сервере где Gitlab то все жутко тормозит я запускал на другом сервере
+```
+docker run -d --name gitlab-runner --restart always \
+-v /srv/gitlab-runner/config:/etc/gitlab-runner \
+-v /var/run/docker.sock:/var/run/docker.sock \
+gitlab/gitlab-runner:latest
+```
+После запуска Runner нужно зарегистрировать, это можно сделать командой:
+```
+root@gitlab-ci:~# docker exec -it gitlab-runner gitlab-runner register --run-untagged --locked=false
+```
+Please enter the gitlab-ci coordinator URL (e.g. https://gitlab.com/):
+```
+http://<YOUR-VM-IP>/
+```
+Please enter the gitlab-ci token for this runner:
+```
+<TOKEN>
+```
+Please enter the gitlab-ci description for this runner:
+```
+[38689f5588fe]: my-runner
+```
+Please enter the gitlab-ci tags for this runner (comma separated):
+```
+linux,xenial,ubuntu,docker
+```
+Please enter the executor:
+```
+docker
+```
+Please enter the default Docker image (e.g. ruby:2.1):
+```
+alpine:latest
+```
+Runner registered successfully.
+
+Как вариант, можно регистрировать Runner в неинтерактивном режиме:
+```
+sudo docker exec gitlab-runner gitlab-runner register --run-untagged --locked=false --non-interactive --executor "docker" --docker-image alpine:latest --url "http://34.77.7.178/"   --registration-token "*********" --description "docker-runner" --tag-list "docker,linux" --run-untagged="true"
+```
+
+Runner может быть назначен на проект или на все проекты
+Чтобы назначить раннер на проект когда мы его добавляем мы берем token:
+Заходим в проект — Settings — CI/CD — Specific Runners. Копируем токен.
+Если хоти завести раннер для испольщования в любых проектах то идем 
+Admin — Runners — Register an instance runner — и копируем токен.
+Этот раннер можем включить или выключить в проекте.
+
+Runner будет запускаться всегда если в нем стоит галка run untagged jobs.
+Если галка не стоит то раннер будет запускаться только по совпадению тега, который прописан в раннере и того который указываем в шагах файла .gitlab-ci.yml
+
+Например
+```
+deploy_dev_job:
+	stage: review
+	tags:
+		- external
+```
+
+Добавим тестирование приложения reddit в pipeline
+```
+> git clone https://github.com/express42/reddit.git && rm -rf ./reddit/.git
+> git add reddit/
+> git commit -m “Add reddit app”
+> git push gitlab gitlab-ci-1
+```
+
+Изменим описание пайплайна в .gitlab-ci.yml
+```
+test_unit_job:
+  stage: test
+  tags:
+    - external
+  # List of services to be started before the job runs    
+  services:
+    - mongo:latest
+  script:
+    # Install the necessary dependencies
+    - bundle install
+    # Run the unit tests
+    - ruby simpletest.rb 
+```
+В описании pipeline мы добавили вызов теста в файле simpletest.rb, нужно создать его в папке reddit
+/home/baggurd/gitlab/example/reddit/simpletest.rb
+Последним шагом нам нужно добавить библиотеку для тестирования в reddit/Gemfile приложения.
+
+Теперь на каждое изменение в коде приложения будет запущен тест
+
+Изменим пайплайн таким образом, чтобы job deploy стал определением окружения dev, на которое условно будет выкатываться каждое изменение в коде проекта.
+
+После изменения файла .gitlab-ci.yml не забывайте зафиксировать изменение в git и отправить изменения на сервер. (git commit и git push gitlab gitlab-ci-1)
+
+Если после успешного завешения пайплайна с определением окружения перейти в CI/CD >
+Environments, то там появится определение первого окружения.
+
+Если на dev мы можем выкатывать последнюю версию кода, то к production окружению это может быть неприменимо, если, конечно, вы не стремитесь к continuous deployment.
+
+Определим два новых этапа: stage и production, первый будет содержать job имитирующий выкатку на staging окружение, второй на production окружение.
+
+Определим эти job таким образом, чтобы они запускались с кнопки
+
+when: manual – говорит о том, что job должен быть запущен человеком из UI.
+
+Обычно, на production окружение выводится приложение с явно зафиксированной версией (например, 2.4.10).
+
+Добавим в описание pipeline директиву, которая не позволит нам выкатить на staging и production код, не помеченный с помощью тэга в git.
+
+Директива only описывает список условий, которые должны быть истинны, чтобы job мог запуститься.
+
+Регулярное выражение слева означает, что должен стоять semver тэг в git, например, 2.4.10
+```
+staging:
+  stage: stage
+  when: manual
+  only:
+    - /^\d+\.\d+\.\d+/
+  script:
+    - echo 'Deploy'
+  environment:
+    name: stage
+    url: https://beta.example.com
+```
+Изменение без указания тэга запустят пайплайн без job staging и production
+Изменение, помеченное тэгом в git запустит полный пайплайн
+```
+git commit -a -m '#4 add logout button to profile page'
+git tag 2.4.10
+git push gitlab gitlab-ci-1 --tags
+```
+
+Динамические окружения
+Gitlab CI позволяет определить динамические окружения, это мощная функциональность позволяет вам иметь выделенный стенд для, например, каждой feature-ветки в git.
+
+Определяются динамические окружения с помощью переменных, доступных в .gitlab-ci.yml
+```
+# Этот job определяет динамическое окружение для каждой ветки в репозитории, кроме ветки master
+# Теперь, на каждую ветку в git отличную от master Gitlab CI будет определять новое окружение.
+branch review:
+  stage: review
+  script: echo "Deploy to $CI_ENVIRONMENT_SLUG"
+  environment:
+    name: branch/$CI_COMMIT_REF_NAME
+    url: http://$CI_ENVIRONMENT_SLUG.example.com
+  only:
+    - branches
+  except:
+    - master
+```
+
+Теперь, на каждую ветку в git отличную от master Gitlab CI будет определять новое окружение.
+
+Если создать ветки new-feature и bugfix, то на странице окружений будет следующее:
+
+Пригодится:
+Описание переменных CI https://docs.gitlab.com/ee/ci/variables/predefined_variables.html
+Некоторое раскрытие работы используемых переменных CI https://docs.gitlab.com/ee/ci/environments.html#example-configuration
+
+Задание с *
+
+В шаг build добавить сборку контейнера с приложением reddit
+Деплойте контейнер с reddit на созданный для ветки сервер.
+
+Так как нам нужно сделать сборку контейнера а раннер это уже контейнер то нам необходимо пользоваться образом docker:dind
+
+!!! Если нужно собирать docker images:
+    • контейнер gitlab-runner д.б. запущен с опцией --privileged
+    • в файл конфигурационный файл runner вписать что он работает в привилигированном режиме
+https://docs.gitlab.com/runner/executors/docker.html#use-docker-in-docker-with-privileged-mode
+
+```
+nano /srv/gitlab-runner/config/config.toml
+------
+[[runners]]
+  name = "my-runner"
+  url = "http://35.205.50.178/"
+  executor = "docker"
+  ...
+  [runners.docker]
+    ...
+    privileged = true
+    ...
+------
+```
+Для успешной сборки и отправки обораза в registry необходимо в Settings - CI/CD - Variables добавить параметры
+        ◦ CI_REGISTRY_USER- логин от учетной записи docker hub
+        ◦ CI_REGISTRY_PASSWORD - пароль от учетной записи docker hub
+        ◦ CI_REGISTRY — хаб с которого берем образы (docker.io)
+Переменные $CI_REGISTRY_PASSWORD, $CI_REGISTRY_USER, $CI_REGISTRY прописываем в settings - Ci/CD Variables
+Отключаем опцию Protected. (Если опция включена получаем ошибку Get https://registry-1.docker.io/v2/: unauthorized: incorrect username or password)
+акая ошибка Error: Cannot perform an interactive login from a non TTY device бывает если мы вводим
+docker login -u $DOCKER_REPO_USER -p $DOCKER_REPO_PASS вместо echo. 
+```
+- echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+```
+
+Директива before_script: [] внутри этапа позволит переопределить before_script объявленный на уровне pipeline.
+
+
+Пригодится!
+Деплой через ssh https://medium.com/@codingfriend/continuous-integration-and-deployment-with-gitlab-docker-compose-and-digitalocean-6bd6196b502a
+Документация на опции GitLab CI/CD Pipeline в .gitlab-ci.yml https://docs.gitlab.com/ee/ci/yaml/
+Некоторые разъяснения в документации по использованию имиджей докера и инструкции services: https://docs.gitlab.com/ee/ci/docker/using_docker_images.html#what-is-a-service
+Докер в докере и наличие для этого сервиса docker:dind :
+    1. http://qaru.site/questions/2440757/role-of-docker-in-docker-dind-service-in-gitlab-ci
+    2. https://docs.gitlab.com/ce/ci/docker/using_docker_build.html#use-docker-in-docker-executor
+Докер в докере и привилегированный режим (контейнер gitlab-runner д.б. запущен с опцией --privileged) https://docs.gitlab.com/runner/executors/docker.html#use-docker-in-docker-with-privileged-mode
+
+Создаем с помощью terraform и ansible сервер для Deploy нашего приложения
+/home/baggurd/microservices/terraform/reddit-app
+```
+terraform init
+terraform apply
+```
+```
+Настраиваем Gitlab для выполнения деплоя через ssh
+      Для этого создаем переменные в настройках проекта CI
+        ◦ переменную CI_PRIVATE_KEY с приватным ключом аналогичным ~/.ssh/appuser
+        ◦ переменную CI_USER с именем пользователя
+        ◦ переменную HOST с IP адресом выделенного сервера
+
+Корректируем задание deploy_dev_job в pipeline этапа review в .gitlab-ci.yml
+    • Для проверки перейти по адресу http://IP_GCP:9292 (или нажать кнопку " View deployment" в Environments в разделе Operations проекта)
+
+Конечный вариант .gitlab-ci.yml:
+
+# Берем контейнер с установленным ruby для тестов приложения на ruby
+image: ruby:2.4.2
+
+# В кэш мы можем помещать каталоги которые будут кэшироваться первый раз и потом они не будут загружаться а использоваться из кэша
+# cache:
+#   key это имя кэша и CI будет обращаться к кэшу по имени. CI_BUILD_REF_NAME это имя нашего branch. путь - node_modules/ то что
+#   будет кэшироваться. Если мы хотим изменить кэш то нужно поменять строку key.
+#   key: "$CI_BUILD_REF_NAME node:ruby:2.4.2"
+#   paths:
+#   - node_modules/
+
+stages:
+  - build
+  - test
+  - review
+  - stage
+  - production
+
+# В данном случае, в переменной DATABASE_URL указан адрес подключения 'mongodb://mongo/user_posts', 
+# который указывает на то, что база данных MongoDB находится на хосте "mongo" и используется для хранения данных "user_posts"
+# Сама база устанавливается как служба в блоке test_unit_job 
+variables:
+  DATABASE_URL: 'mongodb://mongo/user_posts'
+
+# Переходим в каталог reddit и устанавливаем зависимости для нашего приложения 
+before_script:
+  - cd reddit
+# Не работает с image docker:dind поэтому переносим настройку в блок test_unit_job    
+#  - bundle install
+
+# !!! Если нужно собирать docker images: runner д.б. запущен с опцией --privileged
+# для этого неоюходимо в конфигурационный файл runner вписать что он работает в привилигированном режиме
+# Файл находится по пути: nano /srv/gitlab-runner/config/config.toml на хосте где запущен docker контейнер с раннером
+# ------
+# [[runners]]
+#   name = "my-runner"
+#   url = "http://35.205.50.178/"
+#   executor = "docker"
+#   ...
+#   [runners.docker]
+#     ...
+#     privileged = true
+#     ...
+# ------
+
+build_job:
+  image: docker:stable
+  stage: build
+  tags:
+    - external
+  # Импользуем образ "dind" сокращение от "Docker in Docker". 
+  # Этот образ используется для запуска докер-контейнера внутри другого докер-контейнера, 
+  # что позволяет использовать докер-функциональность внутри среды CI/CD  
+  services:
+    - docker:dind
+  # Если не указываем эти переменные получаем ошибку Cannot connect to the Docker daemon at tcp://docker:2375. Is the docker daemon running?  
+  variables:
+    DOCKER_DRIVER: overlay2
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    # Переменные $CI_REGISTRY_PASSWORD, $CI_REGISTRY_USER, $CI_REGISTRY прописываем в settings - Ci/CD Variables
+    # Отключаем опцию Protected. (Если опция включена получаем ошибку Get https://registry-1.docker.io/v2/: unauthorized: incorrect username or password)
+    # Такая ошибка Error: Cannot perform an interactive login from a non TTY device бывает если мы вводим
+    # docker login -u $DOCKER_REPO_USER -p $DOCKER_REPO_PASS вместо echo. 
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+  script:
+    # Здесь вместо . нужно указать каталог где находится Dockerfile (reddit/) 
+    # Иначe получаем ошибку (unable to prepare context: unable to evaluate symlinks in Dockerfile path: lstat /builds/homework/example/Dockerfile: no such file or directory)
+    - docker build -t $CI_REGISTRY_USER/reddit:$CI_COMMIT_SHORT_SHA reddit/
+    - docker push $CI_REGISTRY_USER/reddit:$CI_COMMIT_SHORT_SHA
+
+# Блок services в файле .gitlab-ci.yml определяет, какие службы должны быть запущены 
+# во время выполнения определенной стадии pipeline. В данном случае строчка - mongo:latest означает, 
+# что во время выполнения стадии test должна быть запущена служба MongoDB в последней доступной версии (latest). 
+# Это необходимо для того, чтобы можно было выполнить тесты, основанные на базе данных MongoDB, 
+# которая будет доступна для подключения во время выполнения скрипта ruby simpletest.rb. GitLab берет службу MongoDB из образов Docker. 
+# В данном случае, служба MongoDB скачивается из официального репозитория Docker Hub при первом запуске стадии test с тегом "latest"
+test_unit_job:
+  stage: test
+  tags:
+    - external
+  # List of services to be started before the job runs    
+  services:
+    - mongo:latest
+  script:
+    # Install the necessary dependencies
+    - bundle install
+    # Run the unit tests
+    - ruby simpletest.rb 
+
+test_integration_job:
+  stage: test
+  tags:
+    - external
+  script:
+    - echo 'Testing 2'
+
+# Deploy stage
+deploy:
+  # Stage name
+  stage: review
+  # тег используется для запуска на раннерах с таким же тегом
+  tags:
+    - external
+  # Script to run for this stage    
+  script:
+    # Start the SSH agent to manage the SSH keys
+    - eval $(ssh-agent -s)
+    # Add the private SSH key to the SSH agent. tr -d '\r' удаляет return (\r) из файла. (Windows окончание строки)
+    # Указываем base64 --decode чтобы без ошибок подхватывался ssh ключ. В этом случае сам ключ мы должны брать таким образом: sudo cat ~/.ssh/appuser_ed25519 | base64 -w0 
+    - echo "$CI_PRIVATE_KEY" | base64 --decode | tr -d '\r' | ssh-add -
+    # Create the .ssh directory and set proper permissions
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    # Disable strict host key checking in SSH config
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+    # SSH into the GCP VM and execute commands to pull the Docker image, stop and remove the existing container, and run a new container
+    - ssh $CI_USER@$HOST "docker stop reddit || true && docker rm reddit || true && docker pull $CI_REGISTRY_USER/reddit:$CI_COMMIT_SHORT_SHA && (docker network inspect reddit > /dev/null 2>&1 || docker network create reddit) && (docker volume inspect reddit_db &>/dev/null || docker volume create reddit_db) && docker run -d --network=reddit --network-alias=mongo -v reddit_db:/data/db mongo:4.0-xenial && docker run --name reddit -d --network=reddit --restart unless-stopped -p 9292:9292 $CI_REGISTRY_USER/reddit:$CI_COMMIT_SHORT_SHA"
+  # URL для доступа к среде dev задается в переменной url: http://$HOST:9292 Этот URL может использоваться для доступа к приложению и его тестирования в рамках этой среды.
+  environment:
+    name: dev
+    url: http://$HOST:9292
+  only:
+    - branches
+  except:
+    - master        
+
+# Этот job определяет динамическое окружение для каждой ветки в репозитории, кроме ветки master
+# Теперь, на каждую ветку в git отличную от master Gitlab CI будет определять новое окружение.
+branch review:
+  stage: review
+  tags:
+    - external
+  script: echo "Deploy to $CI_ENVIRONMENT_SLUG"
+  environment:
+    name: branch/$CI_COMMIT_REF_NAME
+    url: http://$CI_ENVIRONMENT_SLUG.example.com
+  only:
+    - branches
+  except:
+    - master    
+
+
+# Для того чтобы эти стаджи работали нужно добавлять соответствующие шагу review стадии в блок script.
+staging:
+  stage: stage
+  tags:
+    - external  
+  when: manual
+# Выражение only: /^\d+\.\d+\.\d+/ используется в конфигурации GitLab CI/CD, чтобы указать, 
+# что данная работа должна выполняться только в том случае, если ветка, которую мы пушим, соответствует регулярному выражению.
+# В данном случае регулярное выражение /^\d+\.\d+\.\d+/ означает, что имя ветки должно начинаться с последовательности цифр, разделенных точками. 
+# Например, 1.0.0, 2.3.5, 10.2.7. (Т.е. только в случае указания соответствующего тега x.x.x при push на gitlab)
+  only:
+    - /^\d+\.\d+\.\d+/
+  script:
+    - echo 'Deploy'
+  environment:
+    name: stage
+    url: https://beta.example.com
+
+production:
+  stage: production
+  tags:
+    - external 
+  when: manual
+  only:
+    - /^\d+\.\d+\.\d+/
+  script:
+    - echo 'Deploy'
+  environment:
+    name: production
+    url: https://example.com
+```
+
 
 
 
