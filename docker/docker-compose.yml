@@ -53,14 +53,38 @@ services:
     # Передаем доп. параметры в командной строке
     # Указываем конфигурвционный файл который мы создали заранее и скопировали в образ указава указав COPY в Dockerfile
     # Указываем путь к хранилищу данных
-    # Задаем время хранения данных в одни день  
+    # Задаем время хранения данных: один день  
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention=1d'
     networks:
-      - back_net
-      - front_net
+      front_net:
+        aliases:
+          - prometheus
+      back_net:
+        aliases:
+          - prometheus
+
+  node-exporter:
+    image: prom/node-exporter:v0.15.2
+    user: root
+    # Монтируем локальную файловую систему в контейнер
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points="^/(sys|proc|dev|host|etc)($$|/)"'
+    networks:
+      front_net:
+        aliases:
+          - node_exporter
+      back_net:
+        aliases:
+          - node_exporter
 
 volumes:
   reddit_db:
