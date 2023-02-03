@@ -1,0 +1,25 @@
+---
+global:
+  # С какой частотой собирать метрики
+  scrape_interval: '5s'
+
+# jobs объединяют в группы endpoint-ы выполняющие одинаковую функцию
+# Конфигурация для опроса серверов:
+scrape_configs:
+  # Имя для задачи опроса Prometheus сервера:
+  - job_name: 'prometheus'
+    static_configs:
+      # Сервер Prometheus для опроса:
+      - targets:
+            # Адреса для сбора метрик
+          - 'localhost:9090'
+
+  - job_name: 'ui'
+    static_configs:
+      - targets:
+          - 'ui:9292'
+
+  - job_name: 'comment'
+    static_configs:
+      - targets:
+          - 'comment:9292'
