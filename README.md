@@ -1619,7 +1619,7 @@ branch review:
     - master    
 
 
-# Для того чтобы эти стаджи работали нужно добавлять соответствующие шагу review стадии в блок script.
+# Для того чтобы эти стейджи работали нужно добавлять соответствующие шагу review стадии в блок script.
 staging:
   stage: stage
   tags:
@@ -1651,8 +1651,247 @@ production:
     url: https://example.com
 ```
 
+## HomeWork 20 - Введение в мониторинг. Системы мониторинга
+- Создано firewall-правило для prometheus `gcloud compute firewall-rules create prometheus-default --allow tcp:9090`
+- Создано firewall-правило для puma `gcloud compute firewall-rules create puma-default --allow tcp:9292`
+- Создан хост docker-machine
 
+Пользуемся хостом который создавали ранее 
+```bash
+eval $(docker-machine env docker-host)
+```
+Или создаем новый:
+```bash
+$ docker-machine create --driver google --google-project docker-372311 --google-machine-image https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/ubuntu-1604-xenial-v20170815a --google-machine-type n1-standard-1 --google-zone europe-west1-b --engine-install-url "https://releases.rancher.com/install-docker/19.03.9.sh" docker-host
+```
 
+Систему мониторинга Prometheus будем запускать внутри Docker контейнера. Для начального знакомства воспользуемся готовым образом с DockerHub.
+```bash
+docker run --rm -p 9090:9090 -d --name prometheus prom/prometheus:v2.1.0
+```
 
+Узнать ip адрес хоста созданного docker-machine
+```bash
+docker-machine ip docker-host
+```
+- Поосмтрел метрики, которые уже сейчас собирает prometheus
+- Посмотрел список таргетов, с которых prometheus забирает метрики
+- Остановил контейнер с prometheus `docker stop prometheus`
+- Перенес docker-monolith и файлы docker-compose и .env из src в новую директорию docker
+- Создал директорию под все, что связано с мониторингом - monitoring
+- Добавил monitoring/prometheus/Dockerfile для создания образа с кастомным конфигом
+```dockerfile
+FROM prom/prometheus:v2.1.0
+ADD prometheus.yml /etc/prometheus/
+```
 
+- Создал конфиг monitoring/prometheus/prometheus.yml Вся конфигурация Prometheus, в отличие от многих других систем мониторинга, происходит через файлы конфигурации и опции командной строки.
+- !!Нельзя использовать sudo в случае если мы используем docker-machine. Потому что с sudo все будет собираться локально и будем получать ошибку
+- Error response from daemon: pull access denied for vasiliybasov/ui, repository does not exist or may require 'docker login': denied: requested access to the resource is denied
+- Собрал образ prometheus `docker build -t vasiliybasov/prometheus .`
+- Собрал образы микросервисов посредством docker_build.sh
 
+```
+# Скрипт для сборки докер контейнеров с помощью скриптов docker_build.sh
+export USER_NAME=vasiliybasov
+for i in ui post-py comment; do
+ cd src/$i;
+ bash docker_build.sh;
+ cd -;
+done
+```
+
+- удалил из docker/docker-compose.yml директивы build и добавил описание для prometheus
+- добавил конфигурацию networks для prometheus в docker-compose
+- актуализировал переменные в .env
+- запустил контейнеры `docker-compose up -d`
+- приложения доступно по адресу <http://x.x.x.x:9292/> и prometheus доступен на <http://x.x.x.x:9090/>
+
+### Мониторинг состояния микросервисов
+
+- Убедился что в prometheus определены и доступны эндпоинты ui и comment
+- Получил статус метрики ui_health, так же получил ее в виде графика
+- Остановил микросервис post и увидел, что метрика изменила свое значение на 0
+- Посмотрел метрики доступности сервисов comment и post
+- Заново запустил post-микросервис `docker-compose start post`
+
+### Exporters Сбор метрик хоста
+
+- Добавил определение контейнера node-exporter в docker-compose.yml
+- Добавил job для node-exporter в конфиг Prometheus и пересобрал контейнер
+- Остановил и повторно запустил контейнеры docker-compose
+- Убедился в том, что в списке эндпоинтов пояивлся эндпоинт node
+- Выполнил `yes > /dev/null` на docker-host и убедился что метрики демонстрируют увеличение нагрузки на процессор
+- Загрузил образы на Docker Hub 
+
+### HW 20: Задание со * 1
+- Добавьте в Prometheus мониторинг MongoDB с использованием необходимого экспортера.
+- Использовался экспортер bitnami/mongodb-exporter
+
+- В наш docker-compose добавляем следующее содержимое docker/docker-compose.yml:
+```dockerfile
+  mongodb-exporter:
+    user: root
+    image: bitnami/mongodb-exporter:latest
+    # Use the environment variables to configure the MongoDB connection
+    command:
+      # Опция нужна чтобы собирать все метрики mongo_db а не только mongodb_up 
+      - '--collect-all'
+      - '--mongodb.uri=mongodb://post_db:27017'
+      # Можно собирать только часть метрик:
+      # - '--collect.database'
+      # - '--collect.collection'
+      # - '--collect.indexusage'
+      # - '--collect.topmetrics'
+    # environment:
+    #   - MONGODB_URI=mongodb://post_db:27017
+    networks:
+      back_net:
+        aliases:
+          - mongodb-exporter
+```
+prometheus.yml
+```
+  - job_name: 'mongodb-exporter'
+    static_configs:
+      - targets: 
+        - 'mongodb-exporter:9216'
+```
+- Все метрики которые касаются мониторинга mongo начинаются на mongodb_
+
+- Пересобрал образ prometheus и перезапустил контейнеры
+
+### HW 20: Задание со * 2 - BlackBox Exporter
+
+Задание:
+Добавьте в Prometheus мониторинг сервисов comment, post, ui с помощью blackbox экспортера.
+Blackbox exporter позволяет реализовать для Prometheus мониторинг по принципу черного ящика. Т.е. например мы можем проверить отвечает ли сервис по http, или принимает ли соединения порт.
+* Версию образа экспортера нужно фиксировать на последнюю стабильную
+* Если будете добавлять для него Dockerfile, он должен быть в директории monitoring, а не в корне репозитория.
+Вместо blackbox_exporter можете попробовать использовать Cloudprober от Google.
+
+- https://github.com/prometheus/blackbox_exporter
+- мониторинг по принципу черного ящика. Т.е. например мы можем проверить отвечает ли сервис по http, или принимает ли соединения порт.
+
+Собираем образ: microservices/monitoring/blackbox-exporter/Dockerfile
+```Dockerfile
+# The "as golang" portion of the line specifies a build-time alias for the image, 
+# which can be used later in the Dockerfile for purposes such as copying files from the image.
+FROM golang:1.20 as golang
+
+# Задаем переменную
+ARG VERSION=0.23.0
+
+WORKDIR /go/src/github.com/blackbox_exporter
+
+# The "make build" command is executing the build target specified in the "Makefile" for the Blackbox Exporter project. 
+# This target will compile the application and produce the necessary binaries, libraries and other files required to run the Blackbox Exporter.
+RUN git clone https://github.com/prometheus/blackbox_exporter.git . && \
+    git checkout tags/v"${VERSION}" && \
+    make build
+
+# Финальный образ будет состоять из комбинации двух образов golang:1.11 + quay.io/prometheus/busybox:latest
+FROM quay.io/prometheus/busybox:latest
+
+COPY --from=golang /go/src/github.com/blackbox_exporter/blackbox_exporter  /bin/blackbox_exporter
+COPY blackbox.yml       /etc/blackbox_exporter/config.yml
+
+# Весь трафик который послан на порт 9115 хостовой машины будет перенаправлен в docker container
+# To allow incoming traffic from outside the host, it is necessary to use the -p or --publish flag when running the Docker container, 
+# which maps the exposed port to a port on the host.
+EXPOSE      9115
+# Инструкция ENTRYPOINT задает команду, которая (почти обязательно) выполняется при старте контейнера
+ENTRYPOINT  [ "/bin/blackbox_exporter" ]
+# Запускает команду при запуске контейнера 
+CMD         [ "--config.file=/etc/blackbox_exporter/config.yml" ]
+```
+
+- Подготовил конфигурационный файл blackbox.yml с проверками по http и icmp
+- https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md
+- blackbox.yml:
+```yml
+modules:
+  # проверям код ответа http с 200 по 299 successful HTTP response
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      valid_http_versions: ["HTTP/1.1", "HTTP/2"]
+      valid_status_codes:
+        - 200
+        - 404
+      # HTTP GET request to the target endpoint during the probe. 
+      # The response from the target will be analyzed to determine 
+      # the status of the endpoint and to collect metrics  
+      method: GET
+      preferred_ip_protocol: "ip4"
+  icmp:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: "ip4"
+```
+
+- Подготовил образ blackbox-exporter `docker build -t $USER_NAME/blackbox-exporter .`
+- Добавил тэг версии `docker tag $USER_NAME/blackbox-exporter:latest $USER_NAME/blackbox-exporter:0.8.0`
+- Запушил на Docker Hub `docker push $USER_NAME/blackbox-exporter`
+- Добавил в docker-compose запуск контейнера с BlackBox Exporter
+
+```yml
+  blackbox-exporter:
+    image: ${USER_NAME}/blackbox-exporter:${BLACKBOX_EXPORTER_VERSION}
+    ports:
+      - '9115:9115'
+    networks:
+      back_net:
+        aliases:
+          - blackbox-exporter
+
+      front_net:
+        aliases:
+          - blackbox-exporter
+```
+
+- Добавил job в конфиг prometheus и пересобрал контейнер
+
+```yml
+# https://github.com/prometheus/blackbox_exporter
+# мониторинг по принципу черного ящика. Т.е. например мы можем проверить отвечает ли сервис по http, или принимает ли соединения порт.
+  - job_name: 'blackbox'
+  # Путь для получения метрик из blackbox exporter
+    metrics_path: /probe
+    params:
+      module: 
+        - http_2xx # Look for a HTTP 200 response.
+        - icmp
+    static_configs:
+      - targets:
+        - http://comment:9292/metrics
+        - ui:9292
+    # Relabeling configuration for the targets    
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115 # The blackbox exporter's real hostname:port.
+```
+
+- Добавил переменную BLACKBOX_EXPORTER_VERSION в .env
+- Пересобрал образ prometheus и перезапустил контейнеры `docker-compose donw && docker-compose up -d`
+
+Результаты у нас следующие:
+```
+probe_http_status_code{instance="http://comment:9292/metrics",job="blackbox"}	200
+probe_http_status_code{instance="http://post:9292/metrics",job="blackbox"}	0
+probe_http_status_code{instance="ui:9292",job="blackbox"}	200
+```
+т.к. у post нет /metrics, да и вообще не прослушивается порт 9292, статус 0.
+Если для comment не указывать /metrics, то получим 404 (Not Found).
+
+### HW 20 задание со * 3 - Make
+
+- Подготовил Makefile, перед запуском нужно выполнить `export USER_NAME=your-docker-hub-login` и `export APP_TAG=latest`
+- Сборка всех контейнеров - `make build-all`
+- Пуш всех контейнеров - `make push-all`
