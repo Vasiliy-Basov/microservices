@@ -45,88 +45,12 @@ services:
     networks:
       - front_net
 
-  prometheus:
-    image: ${USER_NAME}/prometheus
-    # аналог команды -p 9090:9090
-    ports:
-      - '9090:9090'
-    volumes:
-      - prometheus_data:/prometheus
-    # Передаем доп. параметры в командной строке эти команды аналог опций указываемых в команде docker run. 
-    # Указываем конфигурвционный файл который мы создали заранее и скопировали в образ указава указав COPY в Dockerfile
-    # Указываем путь к хранилищу данных
-    # Задаем время хранения данных: один день  
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention=1d'
-    networks:
-      front_net:
-        aliases:
-          - prometheus
-      back_net:
-        aliases:
-          - prometheus
-
-  node-exporter:
-    image: prom/node-exporter:v0.15.2
-    user: root
-    # Монтируем локальную файловую систему в контейнер
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro  
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.ignored-mount-points="^/(sys|proc|dev|host|etc)($$|/)"'
-    networks:
-      front_net:
-        aliases:
-          - node-exporter
-      back_net:
-        aliases:
-          - node-exporter
-
-  mongodb-exporter:
-    user: root
-    image: bitnami/mongodb-exporter:latest
-    # Use the environment variables to configure the MongoDB connection
-    command:
-      # Опция нужна чтобы собирать все метрики mongo_db а не только mongodb_up 
-      - '--collect-all'
-      - '--mongodb.uri=mongodb://post_db:27017'
-      # Можно собирать только часть метрик:
-      # - '--collect.database'
-      # - '--collect.collection'
-      # - '--collect.indexusage'
-      # - '--collect.topmetrics'
-    # environment:
-    #   - MONGODB_URI=mongodb://post_db:27017
-    networks:
-      back_net:
-        aliases:
-          - mongodb-exporter
-
-  blackbox-exporter:
-    image: ${USER_NAME}/blackbox-exporter:${BLACKBOX_EXPORTER_VERSION}
-    ports:
-      - '9115:9115'
-    networks:
-      back_net:
-        aliases:
-          - blackbox-exporter
-
-      front_net:
-        aliases:
-          - blackbox-exporter
 
 volumes:
   reddit_db:
     # Declare reddit_db as external volume означает то что он у нас уже существует а не создается новый
     external: true
     name: reddit_db
-  prometheus_data:  
 
 networks:
   back_net:

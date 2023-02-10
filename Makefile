@@ -15,6 +15,9 @@ build-prometheus:
 build-blackbox-exporter:
 	docker build -t $(USER_NAME)/blackbox-exporter:0.23.0 monitoring/blackbox-exporter/
 
+build-alertmanager:
+	docker build -t $(USER_NAME)/alertmanager monitoring/alertmanager
+
 push-all: push-ui push-comment push-post push-prometheus push-blackbox-exporter
 
 push-ui:
@@ -27,3 +30,6 @@ push-prometheus:
 	docker push $(USER_NAME)/prometheus
 push-blackbox-exporter:
 	docker push $(USER_NAME)/blackbox-exporter:0.23.0
+push-alertmanager:
+	docker push $(USER_NAME)/alertmanager
+	
