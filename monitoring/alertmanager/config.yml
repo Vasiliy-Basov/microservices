@@ -1,0 +1,20 @@
+# Настройка отправки алертов в slack
+global:
+  # URL Slack Webhook, который используется для отправки уведомлений в Slack.
+  slack_api_url: 'https://hooks.slack.com/services/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'
+
+# секция, которая определяет пути для маршрутизации алертов.
+route:
+  # receiver: имя получателя, который будет использоваться для отправки уведомлений.
+  receiver: 'slack-notifications'
+
+# секция, которая содержит настройки получателей для алертов:
+receivers:
+# имя получателя:
+- name: 'slack-notifications'
+  # настройки для отправки уведомлений в Slack:
+  slack_configs:
+  # канал Slack, куда будет отправлено уведомление:
+  - channel: '#vasiliy_basov'
+    title: "{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}"
+    text: "{{ range .Alerts }}{{ .Annotations.description }}\n{{ end }}"

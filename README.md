@@ -1895,3 +1895,222 @@ probe_http_status_code{instance="ui:9292",job="blackbox"}	200
 - Подготовил Makefile, перед запуском нужно выполнить `export USER_NAME=your-docker-hub-login` и `export APP_TAG=latest`
 - Сборка всех контейнеров - `make build-all`
 - Пуш всех контейнеров - `make push-all`
+
+## HomeWork 21 - Мониторинг приложения и инфраструктуры
+
+### Мониторинг Docker-контейнеров
+
+- Перенес описание приложений для мониторинга в отдельный docker-compose-файл microservices/docker `docker-compose-monitoring.yml`
+- Добавил в docker-compose-monitoring.yml описание для контейнера cAdvisor
+- Добавил в конфиг prometheus job для cadvisor, пересобрал image prometheus
+- Создал в gcloud правило для доступа на 8080 порт `gcloud compute firewall-rules create cadvisor-default --allow tcp:8080`
+- Запустил контейнеры `docker-compose up -d && docker-compose -f docker-compose-monitoring.yml up -d`
+- Изучил информацию, которую предоставляет web-интерфейс cAdvisor
+
+### Визуализация метрик
+
+- Добавил описание Grafana в `docker-compose-monitoring.yml`
+- Запустил контейнер Grafana `docker-compose -f docker-compose-monitoring.yml up -d grafana`
+- Добавил firewall rule для Grafana `gcloud compute firewall-rules create grafana--default --allow tcp:3000`
+- Через web-интерфейс добавил datasource prometheus server
+- Нашел на официальном сайте и загрузил дашборд `Docker and system monitoring` в monitoring/grafana/dashboards/DockerMonitoring.json
+- Импортировал дашборд в Grafana
+- Убедился что появился дашборд, показывающий метрики контейнеров
+
+### Сбор метрик приложения
+
+- В конфиг prometheus.yml добавлен job для сбора метрик с сервиса post
+- Пересобран образ prometheus
+- Пересозданы контейнеры инфраструктуры мониторинга `docker-compose -f docker-compose-monitoring.yml down && docker-compose -f docker-compose-monitoring.yml up -d`
+- В приложении reddit добавлены посты и комментарии к ним
+- В Grafana добавлен новый дашборд
+- В Grafana добавлен график ui_request_count
+- Добавлен график http_requests with error codes.
+- rate() - это функция в формате Prometheus, которая вычисляет скорость изменения метрики за заданный временной интервал. Она позволяет получить информацию о динамике изменения метрики во времени. Обычно rate() используется с счетчиками, так как они представляют собой неотрицательные значения, которые увеличиваются со временем. Функция rate() вычисляет скорость изменения счетчика за заданный временной интервал, позволяя оценить темпы роста или убывания метрики.
+- Выражение rate(<metric_name>[<time_interval>]) получает имя метрики <metric_name> и временной интервал <time_interval>, за который вычисляется скорость изменения. Временной интервал указывается в виде строки, например [5m] для подсчета скорости изменения за последние 5 минут.
+- ui_request_count{http_status=~"^[45].*"}[1m] это количество ошибочных HTTP-ответов за последнюю минуту.
+- rate(ui_request_count{http_status=~"^[45].*"}[1m]) вычисляет скорость изменения метрики "ui_request_count" только для ошибочных HTTP-ответов за последнюю минуту.
+- Сохранил изменениея в дашборде, проверил наличие версий в options дашборда
+- Добавил rate(ui_request_count[1m]) для первого графика. Это скорость изменения количиства http запросов поступающих ui сервису за последнюю минуту
+- Добавил новый график с вычислением 95-ого процентиля для метрики ui_request_response_time_bucket время обработки запросов (за это время или меньше обрабатываются 95% запросов) `histogram_quantile(0.95, sum(rate(ui_request_response_time_bucket[5m])) by (le))`
+- Экспортировал дашборд в виде json
+
+### Сбор метрик бизнес логики
+
+- Создал новый дашборд Business_Logic_Monitoring
+- Добавил на дашборд график `rate(post_count[1h])`
+- Добавил график `rate(comment_count[1h])`
+- Экпортировал дашборд в json
+
+### Алертинг
+
+- Создал Dockerfile для alertmanager
+- Добавил config.yml для alertmanager с индвидуальными настройками webhook
+- Собрал образ alertmanager и запушил в Docker Hub
+- Добавил alertmanager в docker-compose-monitoring.yml
+- Добавил alerts.yml для prometheus
+- Добавил копирование alerts.yml в Dockerfile prometheus
+- Добавил информацию об алертинге в конфиг prometheus и пересобрал образ
+- Перезапустил контейнеры мониторинга
+- Убедился что правила алертинга отображаются в web-интерфейсе Prometheus
+- Запушил все образы в Docker Hub
+
+### HW21: Задание со *
+- В Makefile добавлены команды для сборки новых образов
+
+- В Docker в экспериментальном режиме реализована отдача метрик в формате Prometheus. Добавьте сбор этих метрик в Prometheus. Сравните количество метрик с Cadvisor. Выберите готовый дашборд или создайте свой для этого источника данных. Выгрузите его в monitoring/grafana/dashboards;
+- https://docs.docker.com/config/daemon/prometheus/
+
+- На docker-host в /etc/docker добавлен daemon.json (172.17.0.1 - адрес хоста в сети docker0)
+- Чтобы заработалу нужно перезагрузить хост
+```json
+{
+  "metrics-addr" : "172.17.0.1:9323",
+  "experimental" : true
+}
+```
+- ВАЖНО: в официальной документации предлагалось указать metrics-addr равным 127.0.0.1:9323, но учитывая, что контейнеры у нас запускаются не в сети host, потребовалось изменить адрес на 172.17.0.1. Так же можно указывать bridge interface (соответствует bridge-интерфейсу)
+
+- В prometheus.yml добавлен таргет для docker
+
+``` yml
+  - job_name: 'docker'
+    static_configs:
+    - targets:
+      - '172.17.0.1:9323'
+```
+
+- В Grafana добавлен дашборд Docker Engine Metrics <https://grafana.com/grafana/dashboards/1229>
+- В интерфейсе prometheus появятся метрики engine_daemon_ По количеству и главное по составу, сильно уступает метрикам cAdvisor (начинаются с container_).
+
+### Telegraf
+- Добавлен Dockerfile monitoring/telegraf/Dockerfile и конфиг monitoring/telegraf/telegraf.conf
+- Запуск Telegraf добавлен в docker-compose-monitoring.yml
+
+```yml
+  telegraf:
+    image: ${USER_NAME}/telegraf
+    ports:
+      - 9273:9273
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      back_net:
+        aliases:
+          - telegraf
+      front_net:
+        aliases:
+          - telegraf
+```
+
+- В prometheus.yml добавлен таргет на telegraf
+```yml
+  - job_name: 'telegraf'
+    static_configs:
+      - targets: ['telegraf:9273']
+```
+
+- Поднимаем сервисы
+
+```bash
+cd docker
+docker-compose up -d
+docker-compose -f docker-compose-monitoring.yml up -d
+```
+
+- В интерфейсе prometheus появятся метрики docker_container_ docker_n_, весь перечень метрик доступен по ссылке https://github.com/influxdata/telegraf/tree/master/plugins/inputs/docker
+
+- 987 метрик (vs. 1482 в cAdvisor) Готовых дашбордов к Grafana для Telegraf:Docker от источника Prometheus нет, есть только от источника InfluxDB.
+
+
+- В Grafana добавлен дашборд Telegraf Docker. Telegraf1.json
+
+Задание:
+
+- Придумайте и реализуйте другие алерты, например на 95 процентиль времени ответа UI, который рассмотрен выше; 
+- Настройте интеграцию Alertmanager с e-mail помимо слака;
+- Решение: monitoring/prometheus/alerts.yml
+
+```yml
+groups:
+  - name: alert.rules
+    rules:
+    - alert: LackOfSpace
+      expr: node_filesystem_free{mountpoint="/"} / node_filesystem_size * 100 < 20
+      labels:
+        severity: moderate
+      annotations:
+        summary: "Instance {{ $labels.instance }} is low on disk space"
+        description: "On {{ $labels.instance }}, / has only {{ $value | humanize }}% of disk space left"
+```
+
+### Задание с **
+Выполнено частично.
+
+Задание:
+В Grafana 5.0 была добавлена возможность описать в конфигурационных файлах источники данных и дашборды. Реализуйте автоматическое добавление источника данных и созданных в данном ДЗ дашбордов в графану;
+
+Решение:
+Потребовалось создать отдельный Dockerfile:
+
+monitoring/grafana/Dockerfile
+```dockerfile
+FROM grafana/grafana:5.0.0
+COPY dashboards-providers/providers.yml /etc/grafana/provisioning/dashboards/
+COPY datasources/datasources.yml /etc/grafana/provisioning/datasources/
+COPY dashboards/* /var/lib/grafana/dashboards/
+```
+
+monitoring/grafana/dashboards-providers/providers.yml
+```yaml
+---
+apiVersion: 1
+
+providers:
+  # <string> provider name
+- name: 'default'
+  # <string, required> provider type. Required
+  type: file
+  # <bool> disable dashboard deletion
+  disableDeletion: false
+  # <bool> enable dashboard editing
+  editable: true
+  # <int> how often Grafana will scan for changed dashboards
+  updateIntervalSeconds: 10
+  options:
+    # <string, required> path to dashboard files on disk. Required
+    path: /var/lib/grafana/dashboards
+```
+
+monitoring/grafana/datasources/datasources.yml
+```yaml
+---
+# config file version
+apiVersion: 1
+
+datasources:
+  # <string, required> name of the datasource. Required
+- name: Prometheus Server
+  # <string, required> datasource type. Required
+  type: prometheus
+  # <string, required> access mode. proxy or direct (Server or Browser in the UI). Required
+  access: proxy
+  # <string> url
+  url: http://prometheus:9090/
+  # <string> Deprecated, use secureJsonData.password
+  isDefault: true
+  version: 2
+  # <bool> allow users to edit datasources from the UI.
+  editable: true
+```
+
+ВАЖНО: с экспортированными через web-интерфейс grafana dashboards была обнаружена интересная особенность:
+```
+grafana_1            | t=2019-06-13T12:28:11+0000 lvl=eror msg="failed to save dashboard" logger=provisioning.dashboard type=file name=default error="Invalid alert data. Cannot save dashboard"
+grafana_1            | t=2019-06-13T12:28:11+0000 lvl=info msg="Initializing Alerting" logger=alerting.engine
+grafana_1            | t=2019-06-13T12:28:11+0000 lvl=info msg="Initializing CleanUpService" logger=cleanup
+grafana_1            | t=2019-06-13T12:28:14+0000 lvl=eror msg="failed to save dashboard" logger=provisioning.dashboard type=file name=default error="Invalid alert data. Cannot save dashboard"
+```
+Как выяснилось, в json-файлах фигурировали переменные ${DS_PROMETHEUS} и ${DS_PROMETHEUS_SERVER} в параметре datasource. Потребовалось изменить их значения на "Prometheus Server" (соответствует содержимому monitoring/grafana/datasources/datasources.yml).
+
+
