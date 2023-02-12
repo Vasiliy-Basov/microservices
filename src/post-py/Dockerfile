@@ -9,7 +9,7 @@ COPY . /app
 # apk Менеджер пакетов для дистрибутива Alpine Linux.
 # add установить новый пакет 
 # build-base это пакет который содержит gcc, musl-dev, and libc-dev обычно используется для сборки и компиляции другого программного обеспечения
-RUN apk update && apk add --no-cache build-base=0.4-r1 \
+RUN apk update && apk add --no-cache build-base=0.4-r1 \ # gcc=5.3.0-r0 musl-dev=1.1.14-r16 \
     && pip install -r /app/requirements.txt --no-cache-dir \
     && apk del build-base
 

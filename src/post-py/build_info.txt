@@ -1,2 +1,2 @@
-524f3c4
-monitoring-1
+247770d
+logging-1

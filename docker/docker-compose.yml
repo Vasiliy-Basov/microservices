@@ -49,7 +49,7 @@ services:
 volumes:
   reddit_db:
     # Declare reddit_db as external volume означает то что он у нас уже существует а не создается новый
-    external: true
+    # external: true
     name: reddit_db
 
 networks:
