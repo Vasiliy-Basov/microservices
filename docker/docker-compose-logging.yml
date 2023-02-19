@@ -1,0 +1,98 @@
+version: '3.3'
+services:
+  fluentd:
+    image: ${USER_NAME}/fluentd
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+    depends_on:
+      - elasticsearch
+      - kibana      
+    networks:
+      front_net:
+        aliases:
+          - fluentd
+      back_net:
+        aliases:
+          - fluentd
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_VERSION}
+    container_name: elasticsearch
+    environment:
+    # With latest version of Elasticsearch, it is necessary to set the option discovery.type=single-node for a single node cluster otherwise it won't start
+      - "discovery.type=single-node"
+    # Открываем для других докер контерйнеров которые находятся в той же сети. but the container cannot be accessed from outside the Docker network  
+    expose:
+      - 9200
+    ports:
+      - "9200:9200"
+    networks:
+      front_net:
+        aliases:
+          - elasticsearch
+      back_net:
+        aliases:
+          - elasticsearch
+  kibana:
+    image: docker.elastic.co/kibana/kibana:${KIBANA_VERSION}
+    depends_on:
+      - elasticsearch    
+    ports:
+      - "5601:5601"
+    networks:
+      front_net:
+        aliases:
+          - kibana
+      back_net:
+        aliases:
+          - kibana
+
+  zipkin:
+    image: openzipkin/zipkin:${ZIPKIN_VERSION}
+    ports:
+      - "9411:9411"
+    networks:
+      front_net:
+        aliases:
+          - zipkin
+      back_net:
+        aliases:
+          - zipkin
+
+networks:
+  front_net:
+    ipam:
+      config:
+        - subnet: 10.0.1.0/24
+  back_net:
+    ipam:
+      config:
+        - subnet: 10.0.2.0/24
+#   elasticsearch:
+#     image: docker.elastic.co/elasticsearch/elasticsearch:8.6.2
+#     container_name: elasticsearch
+#     
+#     expose:
+#       - 9200    
+#     environment:
+#       # XPACK_SECURITY_ENABLED is an environment variable used in Elasticsearch and Kibana that enables or disables the security features provided by the X-Pack plugin. 
+#       # When it is set to true, it activates various security features, such as authentication, authorization, encryption, and auditing. 
+#       # These features allow users to secure their Elasticsearch and Kibana installations and ensure that only authorized users have access to sensitive data. 
+#       # When it is set to false, these security features are disabled, and the installation is more vulnerable to unauthorized access and other security risks.
+#       # - xpack.security.enabled=false
+#       - discovery.type=single-node
+#     # volumes:
+#     #   - elasticsearch-data:/usr/share/elasticsearch/data
+#     ports:
+#       - "9200:9200"
+#   kibana:
+#     image: docker.elastic.co/kibana/kibana:8.6.2
+#     container_name: kibana
+#     environment:
+#       - ELASTICSEARCH_URL=http://elasticsearch:9200
+#     #   - XPACK_SECURITY_ENABLED=false
+#     ports:
+#       - "5601:5601"
+# # volumes:
+# #   elasticsearch-data:

@@ -2113,4 +2113,477 @@ grafana_1            | t=2019-06-13T12:28:14+0000 lvl=eror msg="failed to save d
 ```
 Как выяснилось, в json-файлах фигурировали переменные ${DS_PROMETHEUS} и ${DS_PROMETHEUS_SERVER} в параметре datasource. Потребовалось изменить их значения на "Prometheus Server" (соответствует содержимому monitoring/grafana/datasources/datasources.yml).
 
+## Logging
+
+В данной работе мы:
+
+познакомились с особенностями сбора структурированных и неструктурированных логов (EFK);
+рассмотрели распределенную трасировку (zipkin).
+
+Создали отдельный compose-файл для нашей системы логирования
+```yml
+version: '3.3'
+services:
+  fluentd:
+    image: ${USER_NAME}/fluentd
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+    depends_on:
+      - elasticsearch
+      - kibana      
+    networks:
+      front_net:
+        aliases:
+          - fluentd
+      back_net:
+        aliases:
+          - fluentd
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_VERSION}
+    container_name: elasticsearch
+    environment:
+    # With latest version of Elasticsearch, it is necessary to set the option discovery.type=single-node for a single node cluster otherwise it won't start
+      - "discovery.type=single-node"
+    # Открываем для других докер контерйнеров которые находятся в той же сети. but the container cannot be accessed from outside the Docker network  
+    expose:
+      - 9200
+    ports:
+      - "9200:9200"
+    networks:
+      front_net:
+        aliases:
+          - elasticsearch
+      back_net:
+        aliases:
+          - elasticsearch
+  kibana:
+    image: docker.elastic.co/kibana/kibana:${KIBANA_VERSION}
+    depends_on:
+      - elasticsearch    
+    ports:
+      - "5601:5601"
+    networks:
+      front_net:
+        aliases:
+          - kibana
+      back_net:
+        aliases:
+          - kibana
+
+  zipkin:
+    image: openzipkin/zipkin:${ZIPKIN_VERSION}
+    ports:
+      - "9411:9411"
+    networks:
+      front_net:
+        aliases:
+          - zipkin
+      back_net:
+        aliases:
+          - zipkin
+
+networks:
+  front_net:
+    ipam:
+      config:
+        - subnet: 10.0.1.0/24
+  back_net:
+    ipam:
+      config:
+        - subnet: 10.0.2.0/24
+```
+Подготовка окружения
+В презентации была отсылка к ветке logging, которая больше не используется, а сам код находится в неработоспопсобном состоянии. В качестве основной используется ветка microservices, с которой мы уже работали ранее. Чтобы контейнер с ElasticSearch не падал, необходимо подкрутить sysctl на docker host:
+```bash
+$ docker-compose -f docker-compose-logging.yml logs elasticsearch
+[...]
+elasticsearch_1  | [1]: max virtual memory areas vm.max_map_count [65530] is too low, increase to at least [262144]
+[...]
+```
+
+```bash
+sudo sysctl -w vm.max_map_count=262144
+```
+To set this value permanently, update the vm.max_map_count setting in /etc/sysctl.conf. To verify after rebooting, run sysctl vm.max_map_count.
+
+Используемые инструменты:
+* ElasticSearch (TSDB + поисковый движок для хранения данных);
+* fluentd (агрегация и трансформация данных);
+* Kibana (визуализация)
+
+kibana: x.x.x.x:5601
+
+***Fluentd
+Fluentd инструмент, который может использоваться для отправки, агрегации и преобразования лог сообщений. Мы будем использовать Fluentd для агрегации (сбора в одной месте) и парсинга логов сервисов нашего приложения.
+
+Создадим образ Fluentd с нужной нам конфигурацией.
+директория logging/ﬂuentd
+
+```Dockerfile
+FROM fluent/fluentd:v1.12.0-debian-1.0
+USER root
+RUN gem uninstall -I elasticsearch && gem install elasticsearch -v 7.17.0
+RUN ["gem", "install", "fluent-plugin-elasticsearch", "--no-document", "--version", "5.0.3"]
+RUN gem install fluent-plugin-grok-parser -v 2.6.2
+COPY fluent.conf /fluentd/etc
+USER fluent
+```
+
+logging/ﬂuentd/ﬂuent.conf
+```
+<source>
+  @type forward
+  port 24224
+  bind 0.0.0.0
+</source>
+
+# фильтр сообщений от сервиса post
+<filter service.post>
+  @type parser
+  key_name log # в этом случае мы парсим поле log  и все что находится внутри этого поля теперь тоже доступно для фильтрации 
+  # (появятся новые значения представленные внутри этого поля разбитые по парам ключ значение)
+  <parse>
+    @type json
+  </parse>
+</filter>
+
+# <filter service.ui>
+#   @type parser
+#   format /\[(?<time>[^\]]*)\]  (?<level>\S+) (?<user>\S+)[\W]*service=(?<service>\S+)[\W]*event=(?<event>\S+)[\W]*(?:path=(?<path>\S+)[\W]*)?request_id=(?<request_id>\S+)[\W]*(?:remote_addr=(?<remote_addr>\S+)[\W]*)?(?:method= (?<method>\S+)[\W]*)?(?:response_status=(?<response_status>\S+)[\W]*)?(?:message='(?<message>[^\']*)[\W]*)?/
+#   key_name log
+# </filter>
+
+<filter service.ui>
+  @type parser
+  key_name log
+  <parse>
+    @type grok
+    grok_pattern %{RUBY_LOGGER}
+  </parse>  
+</filter>
+
+<filter service.ui>
+  @type parser
+  key_name message
+  reserve_data true
+  <parse>
+    @type grok
+    grok_pattern service=%{WORD:service} \| event=%{WORD:event} \| request_id=%{GREEDYDATA:request_id} \| message='%{GREEDYDATA:message}'
+  </parse>  
+</filter>
+
+<filter service.ui>
+  @type parser
+  key_name message
+  reserve_data true
+  <parse>
+    @type grok
+    grok_pattern service=%{WORD:service} \| event=%{WORD:event} \| path=%{URIPATH:path} \| request_id=%{GREEDYDATA:request_id} \| remote_addr=%{IP:remote_addr} \| method= %{WORD:method} \| response_status=%{NUMBER:response_status}
+  </parse>    
+</filter>
+
+<match *.**>
+  @type copy
+
+  <store>
+    @type elasticsearch
+    host elasticsearch
+    port 9200
+    logstash_format true
+    logstash_prefix fluentd
+    logstash_dateformat %Y%m%d
+    include_tag_key true
+    type_name access_log
+    tag_key @log_name
+    flush_interval 1s
+  </store>
+
+  <store>
+    @type stdout
+  </store>
+</match>
+```
+
+Соберите docker image для ﬂuentd
+Из директории logging/ﬂuentd
+```bash
+docker build -t $USER_NAME/fluentd .
+```
+
+По умолчанию, docker использует драйвер json для хранения логов, которая пишется сервисом внутри контейнера в stdout (и stderr)
+Файл находится /var/lib/docker/containers/<container-id>/<container-id>-json.log на хосте. Нам же необходимо использовать fluentd. Поэтому, для сервисов ui и post мы переопределяем секцию logging
+Для отправки логов во Fluentd используем docker драйвер
+https://docs.docker.com/config/containers/logging/fluentd/
+
+docker/docker-compose.yml
+
+```yml
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        tag: service.post
+```
+Поднимем инфраструктуру централизованной системы логирования и перезапустим сервисы приложения Из каталога docker
+```bash
+$ docker-compose -f docker-compose-logging.yml up -d
+$ docker-compose down
+$ docker-compose up -d
+```
+Нельзя заходить на сервер kibana из под vpn иначе получим ошибку 
+Request must contain a kbn-xsrf header. 
+Version: 7.16.2 Build: 46307 Error: Bad Request at fetch_Fetch.fetchResponse (http://34.79.83.252:5601/46307/bundles/core/core.entry.js:8:56906) at async http://34.79.83.252:5601/46307/bundles/core/core.entry.js:8:55074 at async http://34.79.83.252:5601/46307/bundles/core/core.entry.js:8:55031
+
+Создадим несколько постов в приложении:
+Kibana - инструмент для визуализации и анализа логов от компании Elastic.
+Откроем WEB-интерфейс Kibana для просмотра собранных в
+ElasticSearch логов Post-сервиса
+
+### Парсинг структурированных логов
+Парсинг json-логов (=структурированных) от сервиса post:
+logging/fluentd/fluent.conf
+```
+# фильтр сообщений от сервиса post
+<filter service.post>
+  @type parser
+  key_name log # в этом случае мы парсим поле log  и все что находится внутри этого поля теперь тоже доступно для фильтрации 
+  # (появятся новые значения представленные внутри этого поля разбитые по парам ключ значение)
+  <parse>
+    @type json
+  </parse>
+</filter>
+```
+После этого персоберите образ и перезапустите сервис ﬂuentd
+```bash
+logging/fluentd $ docker build -t $USER_NAME/fluentd
+docker/ $ docker-compose -f docker-compose-logging.yml up -d fluentd
+```
+Создадим пару новых постов, чтобы проверить парсинг логов
+Взглянем на одно из сообщений и увидим, что вместо одного
+поля log появилось множество полей с нужной нам информацией
+
+### Парсинг неструктурированных логов
+Сервис ui отправляет неструктурированные логи в нескольких форматах. Для парсинга мы можем воспользоваться либо регулярными выражениями, либо готовым grok-шаблоном (именованный шаблон регулярных выражений). Последнее - гораздо удобнее.
+
+По аналогии с post сервисом определим для ui сервиса
+драйвер для логирования ﬂuentd в compose-файле
+
+Перезапустим ui сервис Из каталога docker
+```bash
+$ docker-compose stop ui
+$ docker-compose rm ui
+$ docker-compose up -d
+```
+
+регулярные выражения
+```
+ <filter service.ui>
+   @type parser
+   format /\[(?<time>[^\]]*)\]  (?<level>\S+) (?<user>\S+)[\W]*service=(?<service>\S+)[\W]*event=(?<event>\S+)[\W]*(?:path=(?<path>\S+)[\W]*)?request_id=(?<request_id>\S+)[\W]*(?:remote_addr=(?<remote_addr>\S+)[\W]*)?(?:method= (?<method>\S+)[\W]*)?(?:response_status=(?<response_status>\S+)[\W]*)?(?:message='(?<message>[^\']*)[\W]*)?/
+   key_name log
+ </filter>
+ ```
+
+ Парсим с помощью плагина grok
+
+ ```
+<filter service.ui>
+  @type parser
+  key_name log
+  <parse>
+    @type grok
+    grok_pattern %{RUBY_LOGGER}
+  </parse>  
+</filter>
+
+<filter service.ui>
+  @type parser
+  key_name message
+  reserve_data true
+  <parse>
+    @type grok
+    grok_pattern service=%{WORD:service} \| event=%{WORD:event} \| request_id=%{GREEDYDATA:request_id} \| message='%{GREEDYDATA:message}'
+  </parse>  
+</filter>
+
+<filter service.ui>
+  @type parser
+  key_name message
+  reserve_data true
+  <parse>
+    @type grok
+    grok_pattern service=%{WORD:service} \| event=%{WORD:event} \| path=%{URIPATH:path} \| request_id=%{GREEDYDATA:request_id} \| remote_addr=%{IP:remote_addr} \| method= %{WORD:method} \| response_status=%{NUMBER:response_status}
+  </parse>    
+</filter>
+ ```
+
+### Zipkin
+сервисраспределенного трейсинга
+
+docker/docker-compose-logging.yml
+```yml
+  zipkin:
+    image: openzipkin/zipkin:${ZIPKIN_VERSION}
+    ports:
+      - "9411:9411"
+    networks:
+      front_net:
+        aliases:
+          - zipkin
+      back_net:
+        aliases:
+          - zipkin
+```
+
+Для активации трейсов необходимо проинструктировать приложение через специальную переменную окружения:
+docker/docker-compose.yml
+```dockerfile
+  ui:
+    environment:
+      - ZIPKIN_ENABLED=${ZIPKIN_ENABLED}
+	  
+  post:
+    environment:
+      - ZIPKIN_ENABLED=${ZIPKIN_ENABLED}
+
+  comment:
+    environment:
+      - ZIPKIN_ENABLED=${ZIPKIN_ENABLED}
+```
+docker/.env
+```
+ZIPKIN_ENABLED=true
+```
+### Задание со * (стр. 53)
+Задание:
+С нашим приложением происходит что-то странное. Пользователи жалуются, что при нажатии на пост они вынуждены долго ждать, пока у них загрузится страница с постом. Жалоб на загрузку других страниц не поступало. Нужно выяснить, в чем проблема, используя Zipkin. 
+Репозиторий со сломанным кодом приложения: https://github.com/Artemmkin/bugged-code
+
+Решение:
+Исходники приложения размещены в src/bugged-code. "Из коробки" оно не собиралось (у образа ruby:2.2 проблемы с запросом отдельных списков в apt) + отсутствовали необходимые переменные окружения в Dockerfile (видимо, предполагалось, что будут задаваться через секцию environment в docker-compose.yml).
+Исправленные Dockerfile выглядят следующим образом:
+
+bugged-code/ui/Dockerfile
+```dockerfile
+FROM ruby:2.3
+
+RUN apt-get update -qq && apt-get install -y build-essential
+
+ENV APP_HOME /app
+RUN mkdir $APP_HOME
+WORKDIR $APP_HOME
+
+ADD Gemfile* $APP_HOME/
+RUN bundle install
+
+ADD . $APP_HOME
+
+ENV POST_SERVICE_HOST post
+ENV POST_SERVICE_PORT 5000
+ENV COMMENT_SERVICE_HOST comment
+ENV COMMENT_SERVICE_PORT 9292
+
+CMD ["puma"]
+```
+
+bugged-code/post-py/Dockerfile
+```dockerfile
+# FROM python:3.6.0-alpine
+FROM python:2.7
+WORKDIR /app
+ADD requirements.txt /app
+RUN pip install -r requirements.txt
+ADD . /app
+EXPOSE  5000
+ENV POST_DATABASE_HOST post_db
+ENV POST_DATABASE posts
+
+ENTRYPOINT ["python", "post_app.py"]
+```
+bugged-code/comment/Dockerfile
+
+```dockerfile
+FROM ruby:2.3
+
+RUN apt-get update -qq && apt-get install -y build-essential
+
+ENV APP_HOME /app
+RUN mkdir $APP_HOME
+WORKDIR $APP_HOME
+
+ADD Gemfile* $APP_HOME/
+RUN bundle install
+
+ADD . $APP_HOME
+
+ENV COMMENT_DATABASE_HOST comment_db
+ENV COMMENT_DATABASE comments
+
+CMD ["puma"]
+```
+
+Чтобы не смешивать образы из веток microservices и bugged-code, подправил docker-build.sh файлы для каждого сервиса - добавил тэг bug. E.g.:
+src/bugged-code/ui/docker_build.sh
+```bash
+docker build -t $USER_NAME/ui:bug .
+```
+
+docker/.env
+```
+UI_VERSION=bug
+POST_VERSION=bug
+COMMENT_VERSION=bug
+```
+
+Теперь можно приступить к трейсингу.
+Пример трейса при открытии любого поста:
+
+zipkin: x.x.x.x:9411
+```
+post./post/<id>: 3.052s
+×
+Services: post,ui_app
+Date Time	Relative Time	Annotation	Address
+6/17/2019, 4:57:43 PM	2.463ms	Client Start	10.0.1.5:9292 (ui_app)
+6/17/2019, 4:57:43 PM	5.044ms	Server Start	10.0.2.5:5000 (post)
+6/17/2019, 4:57:46 PM	3.039s	Server Finish	10.0.2.5:5000 (post)
+6/17/2019, 4:57:46 PM	3.054s	Client Finish	10.0.1.5:9292 (ui_app)
+Key	Value
+http.path	/post/5d07877fa9cc96000e30efba
+http.status	200
+Server Address	10.0.1.4:5000 (post)
+```
+- Здесь мы видим, что span post выполняется за 3 секунды. Он соответствует функции find_post(id) в src/bugged-code/post-py/post_app.py:
+Поиск нужной функции нужно осуществлять по полю span_name=
+в нашем случае это db_find_single_post это название видно в span zipkin
+
+```python
+# Retrieve information about a post
+@zipkin_span(service_name='post', span_name='db_find_single_post')
+def find_post(id):
+    start_time = time.time()
+    try:
+        post = app.db.find_one({'_id': ObjectId(id)})
+    except Exception as e:
+        log_event('error', 'post_find',
+                  "Failed to find the post. Reason: {}".format(str(e)),
+                  request.values)
+        abort(500)
+    else:
+        stop_time = time.time()  # + 0.3
+        resp_time = stop_time - start_time
+        app.post_read_db_seconds.observe(resp_time)
+        time.sleep(3)
+        log_event('info', 'post_find',
+                  'Successfully found the post information',
+                  {'post_id': id})
+        return dumps(post)
+```
+Блок else выполняется, если в функции не возникло никаких исключений. За задержку в 3 секунды ответственна строка:
+```python
+time.sleep(3)
+```
+
 
