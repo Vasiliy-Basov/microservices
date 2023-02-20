@@ -1,0 +1,29 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: comment-deployment
+  labels:
+    app: test
+  annotations:
+    description: "This is my comment pod"  
+spec:
+  replicas: 1
+  # поле которое определяет, какие объекты Kubernetes будут управляться данным ресурсом
+  # здесь метка app: comment соответствует метке app: comment в metadata.labels pod шаблона определяемого в templates 
+  selector:
+    matchLabels:
+      app: comment
+  # Здесь задается шаблон pod    
+  template:
+    metadata:
+      name: comment
+      labels:
+        app: comment
+    spec:
+      containers:
+      - name: comment
+        image: vasiliybasov/comment:latest
+    # Задаем секрет с паролем от dockerhub который мы ранеее поместили в секреты kubernetes    
+      imagePullSecrets:
+      - name: regcred
