@@ -1,0 +1,19 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+  labels:
+    app: reddit
+    component: ui
+spec:
+  # Настройка для полученияя доступа извне. Доступ на порту 32092
+  type: NodePort
+  ports:
+    - nodePort: 32091
+      port: 9292
+      protocol: TCP
+      targetPort: 9292
+  selector:
+    app: reddit
+    component: ui

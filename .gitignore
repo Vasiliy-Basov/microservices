@@ -1,2 +1,6 @@
 /.idea/
 *.tfvars
+*.tfstate
+*.tfstate.backup
+*.lock.hcl
+/terraform/bucket/.terraform

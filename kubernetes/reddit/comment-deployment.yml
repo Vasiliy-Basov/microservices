@@ -2,28 +2,39 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: comment-deployment
+  name: comment
+  # Метки (labels) - это пары ключ-значение, которые могут использоваться для сортировки, поиска и выборки объектов. 
+  # Например, можно использовать метки для разделения приложений на продукционные и тестовые версии.
   labels:
-    app: test
+    app: reddit
+    component: comment
   annotations:
     description: "This is my comment pod"  
 spec:
-  replicas: 1
+  replicas: 3
   # поле которое определяет, какие объекты Kubernetes будут управляться данным ресурсом
-  # здесь метка app: comment соответствует метке app: comment в metadata.labels pod шаблона определяемого в templates 
+  # здесь метка app: reddit И comment=ui соответствует метке app: reddit И comment=ui в metadata.labels pod шаблона определяемого в template
+  # Поэтому важно в описании POD-а (секция template) задать нужные метки (labels)
   selector:
     matchLabels:
-      app: comment
+      app: reddit
+      component: comment
   # Здесь задается шаблон pod    
   template:
     metadata:
       name: comment
       labels:
-        app: comment
+        app: reddit
+        component: comment
     spec:
       containers:
       - name: comment
         image: vasiliybasov/comment:latest
+        # Прописываем переменную чтобы получить доступ к service comment-mongodb-service.yml Базе данных comment по имени comment-db.
+        # (Эта переменная также прописана в Dockerfile неправильно)
+        env:
+        - name: COMMENT_DATABASE_HOST
+          value: comment-db        
     # Задаем секрет с паролем от dockerhub который мы ранеее поместили в секреты kubernetes    
       imagePullSecrets:
       - name: regcred
