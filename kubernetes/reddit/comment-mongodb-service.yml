@@ -1,0 +1,23 @@
+---
+# Service для БД comment
+apiVersion: v1
+kind: Service
+metadata:
+  # В имени нельзя использовать “_”
+  name: comment-db
+  labels:
+    app: reddit
+    component: mongo
+    comment-db: "true" # добавим метку, чтобы различать сервисы
+spec:
+  ports:
+  - port: 27017
+    protocol: TCP
+    targetPort: 27017
+  # поле которое определяет, какие объекты Kubernetes будут управляться данным ресурсом
+  # данный ресурс будет применятся к объектам у которых есть все три метки указанные в selector
+  # Должны прописать эти лейблы в mongo-deployment.yml
+  selector:
+    app: reddit
+    component: mongo
+    comment-db: "true"

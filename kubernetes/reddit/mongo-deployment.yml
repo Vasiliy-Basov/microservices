@@ -2,22 +2,42 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mongo-deployment
+  name: mongo
   labels:
-    app: test
+    app: reddit
+    component: mongo
+    comment-db: "true" # Лейбл в deployment чтобы было понятно, что развернуто
+    post-db: "true"    
   annotations:
     description: "This is mongodb"    
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: mongo
+      app: reddit
+      component: mongo
   template:
     metadata:
       name: mongo
       labels:
-        app: mongo
+        app: reddit
+        component: mongo
+        comment-db: "true"  # лейбл который будет искать comment-mongodb-service.yml для применения.
+        post-db: "true"        
     spec:
       containers:
       - image: mongo:4.0-xenial
         name: mongo
+        # Точка монтирования в контейнере (не в POD-е)
+        volumeMounts:
+        - name: mongo-persistent-storage
+          # Путь в контейнере до базы данных
+          mountPath: /data/db
+      # Ассоциированные с POD-ом Volume-ы В данном примере mongo-persistent-storage является типом Kubernetes emptyDir, который создает временную директорию внутри контейнера.
+      # При перезапуске контейнера, содержимое этой директории будет удалено.
+      volumes:
+      - name: mongo-persistent-storage
+        emptyDir: {}
+        # hostPath:
+        #   path: /home/baggurd/kub_mongodb
+          

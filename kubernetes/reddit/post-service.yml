@@ -1,0 +1,19 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # В DNS появится запись для post. Что бы узнать ip адрес: kubectl get svc post
+  name: post
+  # Метки для сервиса post: "app: reddit" и "component: post"
+  labels:
+    app: reddit
+    component: post
+spec:
+  ports:
+  - port: 5000  # открываем порт по адресу post:5000
+    protocol: TCP
+    targetPort: 5000 # перенаправляет трафик на 5000 в поды, которые имеют метки "app: reddit" и "component: post"
+  # Это означает, что любой трафик, направленный на сервис post:5000 будет автоматически распределен между подами, которые соответствуют меткам селектора.
+  selector:
+    app: reddit
+    component: post

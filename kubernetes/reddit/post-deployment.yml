@@ -2,24 +2,30 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: post-deployment
+  name: post
   labels:
-    app: test
+    app: reddit
+    component: post
   annotations:
     description: "This is my post pod"    
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
-      app: post
+      app: reddit
+      component: post
   template:
     metadata:
       name: post
       labels:
-        app: post
+        app: reddit
+        component: post
     spec:
       containers:
       - image: vasiliybasov/post:latest
         name: post
+        env:
+        - name: POST_DATABASE_HOST
+          value: post-db        
       imagePullSecrets:
       - name: regcred
