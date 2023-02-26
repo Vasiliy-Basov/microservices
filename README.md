@@ -2805,3 +2805,429 @@ Set-Cookie: rack.session=BAh7CEkiD3Nlc3Npb25faWQGOgZFVEkiRTFlNzM0ZTI1OGE5OTQ3MmY
 Content-Length: 1851
 ```
 Работает
+
+# HW#25 (kubernetes-2) Основные модели безопасности и контроллеры в Kubernetes
+
+Разворачиваем kubernetes локально
+
+- Директории ~/.kube - содержит служебную инфу для kubectl (конфиги, кеши, схемы API)
+- minikube - утилиты для разворачивания локальной инсталляции Kubernetes.
+
+- Устанавливаем kubectl
+- https://kubernetes.io/docs/tasks/tools/
+- Установка Minikube
+- https://minikube.sigs.k8s.io/docs/start/
+
+-  Запустим наш Minukube-кластер 
+-  minikube start
+
+- Посмотрим ноды:
+- kubectl get nodes
+
+Обычно порядок конфигурирования kubectl следующий:
+1) Создать cluster:
+```
+$ kubectl config set-cluster … cluster_name
+```
+2) Создать данные пользователя (credentials)
+```
+$ kubectl config set-credentials … user_name
+```
+3) Создать контекст
+```
+$ kubectl config set-context context_name \
+--cluster=cluster_name \
+--user=user_name
+```
+4) Использовать контекст
+```
+$ kubectl config use-context context_name
+```
+Таким образом kubectl конфигурируется для подключения к
+разным кластерам, под разными пользователями.
+
+Текущий контекст можно увидеть так:
+```
+kubectl config current-context
+```
+Список всех контекстов можно увидеть так:
+```
+kubectl config get-contexts
+```
+Переключиться на другой контекста
+```
+kubectl config use-context <context-name>
+```
+
+Прописываем секрет в kubernetes чтобы брать образы из docker hub
+```
+kubectl create secret generic regcred \
+    --from-file=.dockerconfigjson=/home/baggurd/.docker/config.json \
+    --type=kubernetes.io/dockerconfigjson
+```
+Прописываем манифест для pod ui:
+ui-deployment.yml
+
+Запустим в Minikube ui-компоненту.
+```
+kubectl apply -f ui-deployment.yml
+```
+
+Проверяем что все применилось. Смотрим наши deployments
+```
+kubectl get deployment
+```
+- <deployment-name> - имя деплоймента.
+- READY - количество готовых реплик деплоймента.
+- UP-TO-DATE - количество реплик, которые соответствуют описанию деплоймента (т.е. не требуют обновления).
+- AVAILABLE - количество реплик, которые могут обслуживать запросы.
+- AGE - время, прошедшее с момента создания деплоймента.
+
+Пока что мы не можем использовать наше приложение полностью, потому что никак не настроена сеть для общения с ним.
+Но kubectl умеет пробрасывать сетевые порты POD-ов на локальную машину
+
+Выведем информацию о подах, которые имеют метку component=ui
+```
+kubectl get pods --selector component=ui
+```
+Пробрасываем локальный порт 8080 на порт пода 9292 
+```
+kubectl port-forward ui-658468bf9b-9fxcp 8080:9292
+```
+Не закрывая консоли проверяем в браузере что приложение работает
+http://localhost:8080
+
+UI работает, подключим остальные компоненты
+
+comment-deployment.yml
+post-deployment.yml
+Не забудьте, что post слушает по-умолчанию на порту 5000
+mongo-deployment.yml
+
+### Services
+
+В Kubernetes ресурс kind: Service используется для создания стабильного сетевого интерфейса для доступа к одному или нескольким репликам подов в кластере.
+
+Сервисы позволяют абстрагировать работу с подами, предоставляя стабильный IP-адрес или доменное имя, которое можно использовать для связи с ними, вне зависимости от того, на какой ноде кластера они запущены и какие IP-адреса им присвоены.
+
+В зависимости от типа сервиса, он может быть доступен только внутри кластера, или же иметь внешний IP-адрес, чтобы быть доступным извне. Кроме того, сервисы позволяют настраивать балансировку нагрузки между несколькими репликами подов, а также настраивать маршрутизацию трафика на основе различных параметров, таких как имя пода или метки, которые ему присвоены.
+
+В текущем состоянии приложение не будет работать, так его компоненты ещё не знают как найти друг друга
+Для связи компонент между собой и с внешним миром используется объект Service – абстракция, которая определяет набор POD-ов (Endpoints) и способ доступа к ним
+
+Каждый сервис в Kubernetes получает виртуальный IP-адрес (ClusterIP), который используется для связи с сервисом из других частей кластера. IP-адрес сервиса назначается из диапазона адресов, указанных при настройке кластера.
+IP-адрес конкретного сервиса можно узнать с помощью команды 
+- kubectl get svc <service-name>, где <service-name> - имя сервиса. Например, для сервиса comment команда будет выглядеть так: 
+- kubectl get svc comment
+Полученный IP-адрес будет являться виртуальным IP-адресом сервиса в рамках кластера Kubernetes. Этот адрес можно использовать для связи с сервисом из других частей кластера. Если необходим доступ к сервису извне кластера, необходимо использовать другие типы сервисов, такие как NodePort или LoadBalancer.
+
+Для связи ui с post и comment нужно создать им по объекту Service. Создаем объекты 
+
+- comment-service.yml
+- post-service.yml
+- mongodb-service.yml
+- ui-service.yml
+
+Узнать ip адрес сервиса
+```
+kubectl get svc comment
+```
+
+Посмотреть имена подов:
+```
+kubectl get pods
+```
+
+Посмотреть ip алреса endpoints
+```
+kubectl describe service comment | grep Endpoints
+```
+
+После того как мы настроили service для comment имя comment должно разрешаться из любого pod
+```
+kubectl exec -ti post-656c84c57d-d4mnb nslookup comment
+```
+```
+nslookup: can't resolve '(null)': Name does not resolve
+Name:      comment
+Address 1: 10.107.114.159 comment.default.svc.cluster.local
+```
+
+Когда мы создали services для каждого deployment все равно приложение не работает.
+Попробуем создать пост или помотреть все посты и смотрим логи pod-ов
+```
+kubectl logs post-656c84c57d-tm42b
+```
+
+В логах можем увидеть что мы не можем подключиться к базе данных по адресу post_db:27017
+
+Но мы должны подключаться к mongodb а не post_db
+post_db прописано в переменной Dockerfile
+- ENV POST_DATABASE_HOST=post_db
+
+В Docker Swarm проблема доступа к одному ресурсу под разными именами решалась с помощью сетевых алиасов.
+В Kubernetes такого функционала нет. Мы эту проблему можем решить с помощью тех же Service-ов.
+
+- Делаем сервисы с именами comment-db и post-db
+- Это сервисы для подключения к базам данных comment и post
+
+- comment-mongodb-service.yml
+- post-mongodb-service.yml
+
+Вносим нужные изменения в mongo-deployment.yml чтобы созданные сервисы туда подключались
+
+Так же мы должны поменять переменные указанные в Dockerfile прописать их в:
+- comment-deployment.yml
+- post-deployment.yml
+```yaml
+        env:
+        - name: COMMENT_DATABASE_HOST
+          value: comment-db    
+```
+Удалите объект mongodb-service он нам больше не нужен
+```
+$ kubectl delete -f mongodb-service.yml
+```
+Или
+```
+$ kubectl delete service mongodb
+```
+Нам нужно как-то обеспечить доступ к ui-сервису снаружи.
+Для этого нам понадобится Service для UI-компоненты
+```yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+  labels:
+    app: reddit
+    component: ui
+spec:
+  # Настройка для полученияя доступа извне. Доступ на порту 32092
+  type: NodePort
+  ports:
+    - nodePort: 32092
+      port: 9292
+      protocol: TCP
+      targetPort: 9292
+  selector:
+    app: reddit
+    component: ui
+```
+По-умолчанию все сервисы имеют тип ClusterIP - это значит, что сервис
+распологается на внутреннем диапазоне IP-адресов кластера. Снаружи до него
+нет доступа.
+
+Тип NodePort - на каждой ноде кластера открывает порт из диапазона
+30000-32767 и переправляет трафик с этого порта на тот, который указан в
+targetPort Pod (похоже на стандартный expose в docker)
+
+Теперь до сервиса можно дойти по <Node-IP>:<NodePort>
+Также можно указать самим NodePort (но все равно из диапазона):
+
+Т.е. в описании service
+NodePort - для доступа снаружи кластера
+port - для доступа к сервису изнутри кластера
+
+Узнать ip всех нод
+```bash
+$ kubectl get nodes -o wide
+```
+или только адреса
+```bash
+kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'
+```
+
+Minikube может выдавать web-странцы с сервисами которые были помечены типом NodePort
+```bash
+minikube service ui
+```
+
+Minikube может перенаправлять на web-странцы с сервисами которые были помечены типом NodePort Посмотрите на список сервисов:
+```bash
+minikube service list
+```
+Minikube также имеет в комплекте несколько стандартных аддонов
+(расширений) для Kubernetes (kube-dns, dashboard, monitoring,…).
+Каждое расширение - это такие же PODы и сервисы, какие
+создавались нами, только они еще общаются с API самого Kubernetes
+
+Получить список расширений:
+```bash
+$ minikube addons list
+```
+Интересный аддон - dashboard. Это UI для работы с
+kubernetes. По умолчанию в новых версиях он включен.
+Как и многие kubernetes add-on'ы, dashboard запускается в
+виде pod'а.
+Если мы посмотрим на запущенные pod'ы с помощью
+команды kubectl get pods, то обнаружим только наше
+приложение.
+Потому что поды и сервисы для dashboard-а были запущены
+в namespace (пространстве имен) kube-system.
+Мы же запросили пространство имен default.
+
+Namespace - это, по сути, виртуальный кластер Kubernetes
+внутри самого Kubernetes. Внутри каждого такого кластера
+находятся свои объекты (POD-ы, Service-ы, Deployment-ы и
+т.д.), кроме объектов, общих на все namespace-ы (nodes,
+ClusterRoles, PersistentVolumes)
+В разных namespace-ах могут находится объекты с
+одинаковым именем, но в рамках одного namespace имена
+объектов должны быть уникальны.
+
+При старте Kubernetes кластер уже имеет 3 namespace:
+
+
+- default - для объектов для которых не определен другой Namespace (в нем мы работали все это время)
+- kube-system - для объектов созданных Kubernetes’ом и для управления им
+- kube-public - для объектов к которым нужен доступ из любой точки кластера
+
+Активировать плагин dashboard в minikube
+```bash
+minikube addons enable dashboard
+```
+
+Запустить dashboard
+```bash
+minikube dashboard
+```
+
+http://127.0.0.1:40679/api/v1/namespaces/kubernetes-dashboard/services/http:kubernetes-dashboard:/proxy/#/workloads?namespace=default
+
+В самом Dashboard можно:
+- отслеживать состояние кластера и рабочих нагрузок в нем
+- создавать новые объекты (загружать YAML-файлы)
+- Удалять и изменять объекты (кол-во реплик, yaml-файлы)
+- отслеживать логи в Pod-ах
+- при включении Heapster-аддона смотреть нагрузку на Pod-ах
+- и т.д.
+
+### Namespace
+Отделим среду для разработки приложения от всего остального кластера.
+Для этого создадим свой Namespace dev
+```yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+```
+```bash
+kubectl apply -f dev-namespace.yml
+```
+Запустим приложение в dev неймспейсе сначала поменяем порт NodePort ui сервисе чтобы небыло конфликта
+
+смотрим результатам
+```bash
+minikube service ui -n dev
+```
+
+Давайте добавим инфу об окружении внутрь контейнера UI
+Эта секция в файле описания Kubernetes-объекта Deployment определяет переменную окружения для контейнера, который будет запущен в поде.
+Конкретно, секция "env" определяет переменную окружения с именем "ENV", которая будет доступна внутри контейнера. Значение этой переменной определяется с помощью поля "valueFrom", которое ссылается на метаданные (metadata) Namespace этого объекта Kubernetes.
+
+Таким образом, в этом примере значение переменной "ENV" будет равно имени Namespace, в котором будет развернут этот Deployment.
+```yaml
+        env:
+        - name: ENV
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace  
+```
+Применяем новые настройки
+```bash
+kubectl apply -f /home/baggurd/microservices/kubernetes/reddit/ui-deployment.yml -n dev
+```
+На сайте заголовке видим приписку Microservices Reddit in dev ui-ff5c4db7f-6b2kl container
+
+### Разворачиваем Kubernetes в Google GKE
+
+- Запущено создание кластера Kubernetes через web-консоль Google Cloud
+- Подключимся к GKE для запуска нашего приложения. Добавляем нужные права.
+- Меняем учетную запись gcloud config set account sl******v@gmail.com
+- Добавляем роль
+```bash
+gcloud projects add-iam-policy-binding docker-377610 --member=serviceAccount:docker@docker-377610.iam.gserviceaccount.com --role=roles/container.admin
+```
+- Меняем учетку на сервисный аккаунта
+```bash
+gcloud config set account docker@docker-377610.iam.gserviceaccount.com
+```
+- Ставим plugin для подключения
+```bash
+sudo apt-get update
+sudo apt-get install google-cloud-sdk-gke-gcloud-auth-plugin
+```
+Добавляем в ~/.kube/config данные для подключения:
+```bash
+gcloud container clusters get-credentials cluster-1 --zone us-central1-c --project docker-377610
+```
+Эту команду можно взять в: clusters – три вертикальных точки - connect
+
+В результате в файл ~/.kube/config будут добавлены user, cluster и context для подключения к кластеру в GKE.
+Также текущий контекст будет выставлен для подключения к этому кластеру. Убедиться можно, введя
+```bash
+kubectl config current-context
+```
+
+### Запустим наше приложение в GKE
+
+Создадим dev namespace
+```bash
+$ kubectl apply -f ./kubernetes/reddit/dev-namespace.yml
+```
+Посмотреть
+```bash
+kubectl get namespaces
+```
+
+Посмотреть состояние компонентов кластерам
+```bash
+kubectl get componentstatuses
+```
+
+Задеплоим все компоненты приложения в namespace dev:
+```bash
+kubectl apply -f ./kubernetes/reddit/ -n dev
+```
+
+Откроем Reddit для внешнего мира:
+Зададим правила Firewall. мы открыли порты tcp:30000-32767 для all instances.
+```bash
+gcloud compute firewall-rules create kube-reddit --allow tcp:30000-32767 --direction INGRESS --source-ranges 0.0.0.0/0
+```
+
+Посмотрим наши ноды с ip адресами
+```bash
+kubectl get nodes -o wide
+```
+Посмотрим порт нашего приложениям
+```bash
+kubectl describe service ui -n dev | grep NodePort
+```
+
+Проверяем что приложение доступно
+http://34.27.188.190:32091/
+http://104.154.226.105:32091/
+
+
+
+### Разверните Kubenetes-кластер в GKE с помощью Terraform модуля
+- Подготовил сценарий создания кластера при помощи terraform согласно рекомендациям.
+/kubernetes/terraform
+
+Kubernetes Dashboard add-on больше не поддерживается
+https://cloud.google.com/kubernetes-engine/docs/concepts/dashboards
+
+
+
+
+
+
+
+
+
+
+
