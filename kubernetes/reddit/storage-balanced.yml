@@ -1,0 +1,17 @@
+---
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: pdbalanced
+provisioner: kubernetes.io/gce-pd
+reclaimPolicy: Retain
+parameters:
+  type: pd-standard
+  fsType: "ext4"
+#  позволяет расширять размер существующих Persistent Volume (PV), связанных с данным StorageClass. 
+# Это означает, что если вы создали PVC с некоторым размером и в последствии понадобилось увеличить этот размер, 
+# то при наличии этой опции в StorageClass, вы сможете это сделать без необходимости создавать новый PVC.
+allowVolumeExpansion: true
+# когда PVC запрашивает этот класс хранилища, Kubernetes немедленно связывает созданный PV с запрашивающим PVC. 
+# Это может быть полезно, если требуется быстро обеспечить доступ к новому хранилищу
+volumeBindingMode: Immediate

@@ -8,12 +8,20 @@ metadata:
     component: ui
 spec:
   # Настройка для полученияя доступа извне. Доступ на порту 32092
+#  type: LoadBalancer
+  # Для работы с Ingress в GCP нам нужен минимум Service с типом NodePort: 
   type: NodePort
   ports:
-    - nodePort: 32091
-      port: 9292
+    # Порт который будет открыт на балансировщике
+ #   - port: 80
+    # Порт на который будет обращаться Ingress сервис.
+    - port: 9292
+      # Также на ноде будет открыт порт, но нам он не нужен и его можно даже убрать
+#       nodePort: 32091
       protocol: TCP
+      # Порт pod-а
       targetPort: 9292
+  # К каким объектам будет применяься настройка:    
   selector:
     app: reddit
     component: ui

@@ -8,6 +8,7 @@ metadata:
   labels:
     app: reddit
     component: post
+    # тип service ClusetrIP (тип не указан, т.к. этот тип по-умолчанию).
 spec:
   ports:
   - port: 5000  # открываем порт по адресу post:5000

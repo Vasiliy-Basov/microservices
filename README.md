@@ -3222,12 +3222,774 @@ Kubernetes Dashboard add-on больше не поддерживается
 https://cloud.google.com/kubernetes-engine/docs/concepts/dashboards
 
 
+## Homework Kubernetes. Network. Storage
+
+### Сетевое взаимодействие
+Service - определяет конечные узлы доступа (Endpoint’ы):
+•селекторные сервисы (k8s сам находит POD-ы по label’ам)
+•безселекторные сервисы (мы вручную описываем конкретные endpoint’ы)
+и способ коммуникации с ними (тип (type) сервиса):
+•ClusterIP - дойти до сервиса можно только изнутри кластера
+•nodePort - клиент снаружи кластера приходит на опубликованный порт
+•LoadBalancer - клиент приходит на облачный (aws elb, Google gclb) ресурс балансировки
+•ExternalName - внешний ресурс по отношению к кластеру
+
+ClusterIP - это виртуальный (в реальности нет интерфейса, pod’а или машины с таким адресом) IP-адрес из диапазона адресов для работы внутри, скрывающий за собой IP-адреса реальных POD-ов. Сервису любого типа (кроме ExternalName) назначается этот IP-адрес.
+kubectl get services -n dev
+
+#### Kube-DNS
+Отметим, что Service - это лишь абстракция и описание того, как получить доступ к сервису. Но опирается она на реальные механизмы и объекты: DNS-сервер, балансировщики, iptables.
+
+Для того, чтобы дойти до сервиса, нам нужно узнать его адрес по имени. Kubernetes не имеет своего собственного DNS-сервера для разрешения имен. Поэтому используется плагин kube-dns (это тоже Pod).
+Его задачи:
+• ходить в API Kubernetes’a и отслеживать Service-объекты
+• заносить DNS-записи о Service’ах в собственную базу
+• предоставлять DNS-сервис для разрешения имен в IP-адреса (как внутренних, так и внешних)
+
+При отключенном kube-dns сервисе связность между компонентами reddit-app пропадет и он перестанет работать.
+
+Посмотрим наши сервисы в kube-system
+```bash
+kubectl get deployment --namespace=kube-system
+```
+Отключим сервис kube-dns-autoscaler который следит чтобы dns-kube подов всегда хватало
+```bash
+kubectl scale deployment --replicas 1 -n kube-system kube-dns-autoscaler
+```
+Отключим dns-kube
+```bash
+kubectl scale deployment kube-dns --replicas=0 -n kube-system
+```
+Попробуйте достучатсья по имени до любого сервиса.
+Например:
+```bash
+kubectl exec -ti -n dev post-747469c777-5f2lm -- ping comment
+```
+ping: bad address 'comment'
+command terminated with exit code 1
+Вернем kube-dns-autoscale в исходную
+```bash
+kubectl scale deployment --replicas 1 -n kube-system kube-dns-autoscaler
+```
+Проверьте, что приложение заработало (в браузере)
+
+Как уже говорилось, ClusterIP - виртуальный и не принадлежит ни одной реальной физической сущности. Его чтением и дальнейшими действиями с пакетами, принадлежащими ему, занимается в нашем случае iptables, который настраивается утилитой kube-proxy (забирающей инфу с API-сервера).
+
+Сам kube-proxy, можно настроить на прием трафика, но это устаревшее поведение и не рекомендуется его применять.
+
+Посмотреть правила IPTABLES на ноде
+```bash
+sudo iptables -v -n -L | column -t
+```
+
+Посмотреть pods
+```bash
+kubectl get pods -n dev
+```
+Посмотреть к какой ноде принадлежит pod
+```bash
+kubectl get pod comment-665df5959f-mvvtc -o wide -n dev
+```
+
+На самом деле, независимо от того, на одной ноде находятся поды или на разных - трафик проходит через цепочку, изображенную на предыдущем слайде.
+
+Kubernetes не имеет в комплекте механизма организации overlay-сетей (как у Docker Swarm). Он лишь предоставляет интерфейс для этого. Для создания Overlay-сетей используются отдельные аддоны: Weave, Calico, Flannel, … . В Google Kontainer Engine (GKE) используется собственный плагин kubenet (он - часть kubelet).
+
+Он работает только вместе с платформой GCP и, по-сути занимается тем, что настраивает google-сети для передачи трафика Kubernetes. Поэтому в конфигурации Docker сейчас вы не увидите никаких Overlay-сетей.
+
+Посмотреть правила, согласно которым трафик отправляется на ноды можно здесь:
+https://console.cloud.google.com/networking/routes/
+
+####nodePort
+
+Service с типом NodePort - похож на сервис типа ClusterIP, только к нему прибавляется прослушивание портов нод (всех нод) для доступа к сервисам снаружи. При этом ClusterIP также назначается этому сервису для доступа к нему изнутри кластера.
+
+kube-proxy прослушивается либо заданный порт
+(nodePort: 32092), либо порт из диапазона 30000-32670.
+
+Дальше IPTables решает, на какой Pod попадет трафик.
+Сервис UI мы уже публиковали наружу с помощью NodePort
+
+Тип NodePort хоть и предоставляет доступ к сервису снаружи, но открывать все порты наружу или искать IP-адреса наших нод (которые вообще динамические) не очень удобно.
+
+####LoadBalancer
+
+Тип LoadBalancer позволяет нам использовать внешний облачный балансировщик нагрузки как единую точку входа в наши сервисы, а не полагаться на IPTables и не открывать наружу весь кластер.
+
+Настроим соответствующим образом Service UI
+```yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+  labels:
+    app: reddit
+    component: ui
+spec:
+  # Настройка для полученияя доступа извне. Доступ на порту 32092
+  type: LoadBalancer
+  ports:
+    # Порт который будет открыт на балансировщике
+    - port: 80
+      # Также на ноде будет открыт порт, но нам он не нужен и его можно даже убрать
+      nodePort: 32091
+      protocol: TCP
+      # Порт pod-а
+      targetPort: 9292
+  selector:
+    app: reddit
+    component: ui
+```
+Настроим соответствующим образом Service UI
+```bash
+kubectl apply -f ui-service.yml -n dev
+```
+
+Получим список сервисов Kubernetes, соответствующих селектору component=ui, в пространстве имён dev т.е. наш ui service.
+```bash
+kubectl get service -n dev --selector component=ui
+```
+Немного подождем и сервис получит External_IP
+```bash
+kubectl get service -n dev --selector component=ui
+```
+
+34.121.151.16  наш адрес
+Проверим в браузере: http://<external-ip>:port
+
+Будет создано правило для балансировки:
+Балансировка с помощью Service типа LoadBalancing имеет ряд недостатков:
+• нельзя управлять с помощью http URI (L7-балансировка)
+• используются только облачные балансировщики (AWS, GCP)
+• нет гибких правил работы с трафиком
+
+#### Ingress
+
+Для более удобного управления входящим снаружи трафиком и решения недостатков
+LoadBalancer можно использовать другой объект Kubernetes - Ingress.
+Ingress – это набор правил внутри кластера Kubernetes, предназначенных для того, чтобы входящие подключения могли достичь сервисов (Services)
+
+Сами по себе Ingress’ы это просто правила. Для их применения нужен Ingress Controller.
+
+#### Ingress Conroller
+
+Для работы Ingress-ов необходим Ingress Controller.
+В отличие остальных контроллеров k8s - он не стартует вместе с кластером.
+
+Ingress Controller - это скорее плагин (а значит и отдельный POD), который состоит из 2-х функциональных частей:
+
+•Приложение, которое отслеживает через k8s API новые объекты Ingress и обновляет конфигурацию балансировщика
+•Балансировщик (Nginx, haproxy, traefik,…), который и занимается управлением сетевым трафиком
+
+Основные задачи, решаемые с помощью Ingress’ов:
+
+• Организация единой точки входа в приложения снаружи
+• Обеспечение балансировки трафика
+• Терминация SSL
+• Виртуальный хостинг на основе имен и т.д
+
+Посколько у нас web-приложение, нам вполне было бы логично использовать L7-балансировщик вместо Service LoadBalancer.
+Google в GKE уже предоставляет возможность использовать их собственные решения балансирощик в качестве Ingress controller-ов.
+
+Убедитесь, что встроенный Ingress включен.
+Если нет - включите
+
+Перейдите в настройки кластера в веб-консоли gcloud
+https://console.cloud.google.com/kubernetes
+
+Убедитесь, что встроенный Ingress включен. 
+Для работы Ingress-ов необходим Ingress Controller.
+В отличие остальных контроллеров k8s - он не стартует вместе с кластером.
+
+Ingress Controller - это скорее плагин (а значит и отдельный POD), который состоит из 2-х функциональных частей:
+
+•Приложение, которое отслеживает через k8s API новые объекты Ingress и обновляет конфигурацию балансировщика
+•Балансировщик (Nginx, haproxy, traefik,…), который и занимается управлением сетевым трафиком
+
+Основные задачи, решаемые с помощью Ingress’ов:
+
+• Организация единой точки входа в приложения снаружи
+• Обеспечение балансировки трафика
+• Терминация SSL
+• Виртуальный хостинг на основе имен и т.д
+
+Посколько у нас web-приложение, нам вполне было бы логично использовать L7-балансировщик вместо Service LoadBalancer.
+Google в GKE уже предоставляет возможность использовать их собственные решения балансирощик в качестве Ingress controller-ов.
+
+Убедитесь, что встроенный Ingress включен.
+Если нет - включите
+
+Перейдите в настройки кластера в веб-консоли gcloud
+https://console.cloud.google.com/kubernetes
+
+Убедитесь, что встроенный Ingress включен. 
+HTTP Load Balancing Enabled
+
+Создадим Ingress для сервиса UI
+
+```yaml
+---
+# этот конфигурационный файл определяет Ingress ресурс с именем "ui", 
+# который настроен на использование сервиса "ui" и порта 80 в качестве backend для маршрутизации входящих HTTP запросов.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+# Определяет метаданные для ресурса, такие как имя.
+metadata:
+  # имя Ingress ресурса.
+  name: ui
+# спецификация Ingress ресурса.
+spec:
+ # здесь мы определяем правила маршрутизации для входящих запросов.
+  rules:
+  # мы указываем, что будем маршрутизировать запросы по HTTP протоколу.
+  - http:
+      # здесь мы определяем пути, которые будут маршрутизироваться.
+      paths:
+      # мы определяем, что будем маршрутизировать запросы с корневого пути.
+      - path: /
+        # это указывает, что мы будем использовать префиксное сопоставление для маршрутизации запросов. 
+        # То есть любой запрос, который начинается с указанного пути, будет считаться соответствующим.
+        pathType: Prefix
+        # здесь мы определяем, какой сервис будет обрабатывать запросы, соответствующие указанному пути.
+        backend:
+          # мы указываем, что будем использовать сервис для обработки запросов.
+          service:
+            # мы указываем имя сервиса, который будет обрабатывать запросы.
+            name: ui
+            port:
+              number: 80
+```
+Это Singe Service Ingress - значит, что весь ingress контроллер будет просто балансировать нагрузку на Node-ы для одного сервиса (очень похоже на Service LoadBalancer)
+
+Этот сервис определяет Ingress ресурс для Kubernetes, который позволяет управлять входящим трафиком в приложения, развернутые в кластере Kubernetes.
+В данном случае, Ingress определяет обратное проксирование для сервиса с именем "ui" на порт 80, который должен быть настроен на прием входящих HTTP запросов и маршрутизировать их на соответствующие поды или контейнеры внутри кластера.
+Это позволяет внешним клиентам обращаться к приложению, не зная о его внутреннем расположении и необходимости взаимодействия с конкретными подами или контейнерами.
+
+Один из основных примеров применения обратного прокси - это балансировка нагрузки (load balancing), при которой несколько серверов обслуживают один URL или доменное имя, а Обратный прокси распределяет трафик между ними. Обратный прокси может также обеспечивать дополнительные функции, такие как кэширование, сжатие, шифрование трафика, блокировка вредоносных запросов и другие.
+Обратное проксирование также может использоваться для скрытия внутренней инфраструктуры от внешнего доступа, например, чтобы скрыть IP-адреса имен серверов внутри сети от внешнего мира.
+Применим конфиг
+```bash
+kubectl apply -f ui-ingress.yml -n dev
+```
+
+Зайдем в консоль GCP и увидим уже несколько правил:
+https://console.cloud.google.com/net-services/loadbalancing/loadBalancers/list
+
+Посмотрим в сам кластер:
+```bash
+kubectl get ingress -n dev
+NAME   CLASS    HOSTS   ADDRESS        PORTS   AGE
+ui          <none>        *           34.111.45.26       80      16h
+ ```
+
+Адрес сервиса (если не появился, подождите)
+http://34.111.45.26 :80
+
+В текущей схеме есть несколько недостатков:
+• у нас 2 балансировщика для 1 сервиса
+• Мы не умеем управлять трафиком на уровне HTTP
+
+Один балансировщик можно спокойно убрать. Обновим сервис для UI
+
+Убираем настройку LoadBalancer в ui-service.yml и меняем ее на NodePort
+```yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+  labels:
+    app: reddit
+    component: ui
+spec:
+  # Настройка для полученияя доступа извне. Доступ на порту 32092
+#  type: LoadBalancer
+  # Для работы с Ingress в GCP нам нужен минимум Service с типом NodePort: 
+  type: NodePort
+  ports:
+    # Порт который будет открыт на балансировщике
+ #   - port: 80
+    # Порт на который будет обращаться Ingress сервис.
+    - port: 9292
+      # Также на ноде будет открыт порт, но нам он не нужен и его можно даже убрать
+#       nodePort: 32091
+      protocol: TCP
+      # Порт pod-а
+      targetPort: 9292
+  # К каким объектам будет применяься настройка:    
+  selector:
+    app: reddit
+    component: ui
+```
+
+Меняем порт на ui-ingress.yml
+```yaml
+            port:
+              number: 9292
+```
+
+Применяем настройки
+```bash
+kubectl apply -f ui-service.yml -n dev
+kubectl apply -f ui-ingress.yml -n dev
+```
+```bash
+kubectl get ingress -n dev
+```
+
+Проверяем что приложение работает.
+http://34.111.45.26/
+
+#### Secret
+
+Теперь давайте защитим наш сервис с помощью TLS.
+
+Далее подготовим сертификат используя IP как CN
+Данная настройка выполняет создание самоподписанного сертификата SSL/TLS с помощью утилиты OpenSSL. В результате создания сертификата будет создана пара ключей (private key) и сам сертификат (certificate).
+```bash
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout tls.key -out tls.crt -subj "/CN=34.111.45.26"
+```
+Конкретно в этой команде мы:
+    • req: используем команду OpenSSL для генерации запроса на сертификат.
+    • -x509: указываем, что мы хотим сгенерировать самоподписанный сертификат X.509.
+    • -nodes: генерируем приватный ключ без пароля, чтобы не требовалось вводить пароль каждый раз при использовании ключа.
+    • -days 365: задаем срок действия сертификата на 1 год.
+    • -newkey rsa:2048: генерируем новую пару ключей RSA длиной 2048 бит.
+    • -keyout tls.key: указываем, что приватный ключ должен быть сохранен в файл tls.key.
+    • -out tls.crt: указываем, что сертификат должен быть сохранен в файл tls.crt.
+    • -subj "/CN=34.111.45.26/": устанавливаем параметр subject (субъект) сертификата с указанием Common Name (CN) - в данном случае, это IP-адрес, который будет использоваться в качестве имени сервера при подключении к нему по HTTPS.
+
+После выполнения этой команды в текущей директории будут созданы два файла: tls.key (приватный ключ) и tls.crt (сертификат). Эти файлы могут быть использованы для настройки HTTPS соединения между сервером и клиентами.
+И загрузим сертификат в кластер kubernetes
+```bash
+kubectl create secret tls ui-ingress --key tls.key --cert tls.crt -n dev
+```
+
+посмотреть секреты
+```bash
+kubectl get secrets -n dev
+```
+Подробная информация
+```bash
+kubectl describe secret ui-ingress -n dev
+```
+
+#### TLS Termination
+Теперь настроим Ingress на прием только HTTPS траффика
+ui-ingress.yml
+```yaml
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ui
+  # это блок метаданных (metadata) для Kubernetes-объекта, который позволяет хранить произвольные пары "ключ-значение" в виде аннотаций
+  # Например, в Ingress-объекте аннотации могут использоваться для настройки поведения Ingress-контроллера, который обрабатывает HTTP-запросы и маршрутизирует их на соответствующие сервисы в Kubernetes-кластере.
+  annotations:
+    # Перенаправляет все http запросы на https, также требует, чтобы на сервере был установлен SSL-сертификат и ключ, даже если само соединение использует HTTP-протокол. Если сервер не настроен с SSL-сертификатом и ключом, то запросы будут отвергнуты с ошибкой.    
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # изменяет путь запроса на /, что означает, что он будет передан целевому сервису без изменений. Таким образом, в приложении можно настроить обработку запросов, которые пришли на конкретный путь, например /api/v1 или /dashboard, и все запросы будут корректно переданы соответствующему сервису внутри кластера Kubernetes.
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  tls:
+  - secretName: ui-ingress
+ # здесь мы определяем правила маршрутизации для входящих запросов.
+  rules:
+  # мы указываем, что будем маршрутизировать запросы по HTTP протоколу.
+  - http:
+      # здесь мы определяем пути, которые будут маршрутизироваться.
+      paths:
+      # мы определяем, что будем маршрутизировать запросы с корневого пути.
+      - path: /
+        # это указывает, что мы будем использовать префиксное сопоставление для маршрутизации запросов. 
+        # То есть любой запрос, который начинается с указанного пути, будет считаться соответствующим.
+        pathType: Prefix
+        # здесь мы определяем, какой сервис будет обрабатывать запросы, соответствующие указанному пути.
+        backend:
+          # мы указываем, что будем использовать сервис для обработки запросов.
+          service:
+            # мы указываем имя сервиса, который будет обрабатывать запросы.
+            name: ui
+            # Порт на который будет посылаться трафик на сервис NodePort (прописан в ui-service.yml)
+            port:
+              number: 9292
+```
+Применем
+```bash
+kubectl apply -f ui-ingress.yml -n dev
+```
+Иногда протокол HTTP может не удалиться у существующего
+Ingress правила, тогда нужно его вручную удалить и пересоздать
+```bash
+$ kubectl delete ingress ui -n dev
+$ kubectl apply -f ui-ingress.yml -n dev
+```
+После пересоздание может поменяться ip адрес
+
+Заходим на страницу нашего приложения по https,
+подтверждаем исключение безопасности (у нас сертификат
+самоподписанный) и видим что все работает
+Правила Ingress могут долго применяться, если не
+получилось зайти с первой попытки - подождите и
+попробуйте еще раз
+
+#### HW 27: Задание со *
+
+пишите создаваемый объект Secret в виде Kubernetes-манифеста:
+Данная команда создает манифест объекта Secret, который содержит TLS-сертификат и ключ для использования в Ingress, и сохраняет его в файл ui-ingress-secret.yml
+```bash
+kubectl create secret tls ui-ingress --key tls.key --cert tls.crt -n dev -o yaml --dry-run=client > ui-ingress-secret.yml
+```
+С помощью этой команды мы записываем команду
+kubectl create secret tls ui-ingress --key tls.key --cert tls.crt -n dev
+в манифест ui-ingress-secret.yml
+ключ -dry-run=client означает не применять настройки к кластеру а только проверить что команада выполняется без ошибок.
+Параметр -o yaml используется для вывода объекта Secret в формате YAML
+
+#### Network Policy
+В прошлых проектах мы договорились о том, что хотелось бы разнести сервисы базы данных и сервис фронтенда по разным сетям, сделав их недоступными друг для друга. И приняли следующую схему сервисов.
+
+В Kubernetes у нас так сделать не получится с помощью отдельных сетей, так как все POD-ы могут достучаться друг до друга по-умолчанию.
+
+Мы будем использовать NetworkPolicy – инструмент для декларативного описания потоков трафика. Отметим, что не все сетевые плагины поддерживают политики сети.
+
+В частности, у GKE эта функция пока в Beta-тесте и для её работы отдельно будет включен сетевой плагин Calico (вместо Kubenet).
+
+Давайте ее протеструем.
+Наша задача - ограничить трафик, поступающий на mongodb отовсюду, кроме сервисов post и comment.
+Найдите имя кластера
+```bash
+gcloud beta container clusters list
+NAME         LOCATION       MASTER_VERSION   MASTER_IP       MACHINE_TYPE  NODE_VERSION     NUM_NODES  STATUS
+dev-cluster  us-central1-c  1.24.9-gke.3200  146.148.104.77  g1-small      1.24.9-gke.3200  2          RUNNING
+```
+
+Включим network-policy для GKE.
+```bash
+gcloud beta container clusters update dev-cluster \
+--zone=us-central1-c --update-addons=NetworkPolicy=ENABLED
+```
+```bash
+gcloud beta container clusters update dev-cluster \
+--zone=us-central1-c --enable-network-policy
+```
+
+### Хранилище для базы
+
+Рассмотрим вопросы хранения данных. Основной Stateful сервис в нашем приложении - это база данных MongoDB.
+В текущий момент она запускается в виде Deployment и хранит данные в стаднартный Docker Volume-ах. Это имеет несколько проблем:
+
+    • при удалении POD-а удаляется и Volume
+    • потеря Nod’ы с mongo грозит потерей данных
+    • запуск базы на другой ноде запускает новый экземпляр данных
+```yaml
+    spec:
+      containers:
+      - image: mongo:4.0-xenial
+        name: mongo
+        # Точка монтирования в контейнере (не в POD-е)
+        volumeMounts:
+        - name: mongo-persistent-storage
+          # Путь в контейнере до базы данных
+          mountPath: /data/db
+      # Ассоциированные с POD-ом Volume-ы В данном примере mongo-persistent-storage является типом Kubernetes emptyDir, который создает временную директорию внутри контейнера.
+      # При перезапуске контейнера, содержимое этой директории будет удалено.
+      volumes:
+      - name: mongo-persistent-storage
+        emptyDir: {}
+        # hostPath:
+        #   path: /home/baggurd/kub_mongodb
+```
+Сейчас используется тип Volume emptyDir. При создании пода с таким типом просто создается пустой docker volume.
+При остановке POD’a содержимое emtpyDir удалится навсегда. Хотя
+в общем случае падение POD’a не вызывает удаления Volume’a.
+
+Задание:
+1) создайте пост в приложении
+2) удалите deployment для mongo
+3) Создайте его заново
+```bash
+kubectl get deployments -n dev
+kubectl delete deployment mongo -n dev
+kubectl apply -f mongo-deployment.yml -n dev
+```
+Вместо того, чтобы хранить данные локально на ноде, имеет смысл подключить удаленное хранилище. В нашем случае можем использовать Volume gcePersistentDisk, который будет складывать данные в хранилище GCE
+
+Создадим диск в Google Cloud
+```bash
+gcloud compute disks create --size=25GB --zone=us-central1-c reddit-mongo-disk
+```
+
+Добавим новый Volume POD-у базы.
+```yaml
+      volumes:
+      - name: mongo-gce-pd-storage
+        gcePersistentDisk: # тип volume, указывает на использование Google Compute Engine Persistent Disk
+          pdName: reddit-mongo-disk # Имя диска который мы создали в GCP
+          fsType: ext4
+```
+```bash
+kubectl apply -f mongo-deployment.yml -n dev
+```
+Дождитесь, пересоздания Pod'а (занимает до 10 минут).
+Зайдем в приложение и добавим пост
+
+Удалим deployment
+```bash
+kubectl delete deploy mongo -n dev
+```
+Снова создадим деплой mongo
+```bash
+kubectl apply -f mongo-deployment.yml -n dev
+```
+
+Наш пост все еще на месте
+Здесь можно посмотреть на созданный диск и увидеть какой машиной он используется
+https://console.cloud.google.com/compute/disks
+
+#### PersistentVolume
+Используемый механизм Volume-ов можно сделать удобнее.
+Мы можем использовать не целый выделенный диск для каждого пода, а целый ресурс хранилища, общий для всего кластера.
+
+Тогда при запуске Stateful-задач в кластере, мы сможем запросить хранилище в виде такого же ресурса, как CPU или оперативная память.
+
+Для этого будем использовать механизм PersistentVolume.
+
+Создадим описание PersistentVolume
+mongo-volume.yml
+```yaml
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: reddit-mongo-disk
+spec:
+  capacity:
+    storage: 25Gi
+  # Том может быть смонтирован в режиме чтения-записи только на одном узле (node) в кластере Kubernetes  
+  accessModes:
+    - ReadWriteOnce
+  # Определяет политику удаления для PersistentVolume
+  # Показывает на то, что даже если PersistentVolumeClaim (PVC), который использует этот PV, будет удален, 
+  # то сам PV не будет удален автоматически и его содержимое сохранится. Вместо этого PV будет отмечен как 
+  # "Released" и будет ожидать дальнейшего действия, такого как повторное использование с помощью другого PVC или удаление вручную.
+  persistentVolumeReclaimPolicy: Retain
+  gcePersistentDisk:
+    fsType: "ext4" 
+    pdName: "reddit-mongo-disk" # Имя диска в GCE
+```
+
+Добавим PersistentVolume в кластер
+```bash
+$ kubectl apply -f mongo-volume.yml -n dev
+```
+Мы создали PersistentVolume в виде диска в GCP.
+
+#### PersistentVolumeClaim
+Мы создали ресурс дискового хранилища, распространенный на весь кластер, в виде PersistentVolume.
+
+Чтобы выделить приложению часть такого ресурса – нужно создать запрос на выдачу - PersistentVolumeClaim.
+Claim - это именно запрос, а не само хранилище.
+
+С помощью запроса можно выделить место как из конкретного PersistentVolume (тогда параметры accessModes и StorageClass должны соответствовать, а места должно хватать), так и просто создать отдельный PersistentVolume под конкретный запрос.
+
+Создадим описание PersistentVolumeClaim (PVC)
+
+При создании PersistentVolumeClaim, Kubernetes попытается найти подходящий PersistentVolume, соответствующий требованиям PVC, и связать их вместе, чтобы приложения могли использовать этот PV для хранения данных. Если подходящего PV не найдено, Kubernetes попытается динамически создать новый PV для PVC.
+
+Для того, чтобы указать конкретный PersistentVolume для PersistentVolumeClaim, необходимо использовать механизм селекторов.
+При создании PersistentVolume, можно указать некоторые метки (labels) или аннотации, которые затем можно использовать для выбора подходящих PersistentVolume для PersistentVolumeClaim. Например, можно создать PersistentVolume с меткой storage-class: fast, а затем создать PersistentVolumeClaim, который будет выбирать только PersistentVolume с этой меткой, указав соответствующий селектор в поле spec.selector.matchLabels:
+Также чтобы этот способ работал нужно создать соответствующий storageclass и прописать его в манифестах PV и PVC
+storageClassName: pdbalanced
+
+Пример  
+Создаем SC
+
+storage-balanced.yml
+```yaml
+---
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: pdbalanced
+provisioner: kubernetes.io/gce-pd
+reclaimPolicy: Retain
+parameters:
+  type: pd-standard
+  fsType: "ext4"
+#  позволяет расширять размер существующих Persistent Volume (PV), связанных с данным StorageClass. 
+# Это означает, что если вы создали PVC с некоторым размером и в последствии понадобилось увеличить этот размер, 
+# то при наличии этой опции в StorageClass, вы сможете это сделать без необходимости создавать новый PVC.
+allowVolumeExpansion: true
+# когда PVC запрашивает этот класс хранилища, Kubernetes немедленно связывает созданный PV с запрашивающим PVC. 
+# Это может быть полезно, если требуется быстро обеспечить доступ к новому хранилищу
+volumeBindingMode: Immediate
+```
+Создаем PV
+mongo-volume.yml
+```yaml
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: reddit-mongo-disk
+  labels:
+    storage-class: pdbalanced
+spec:
+  capacity:
+    storage: 25Gi
+  # Том может быть смонтирован в режиме чтения-записи только на одном узле (node) в кластере Kubernetes, в таком режиме только один PVC может быть подключен. 
+  accessModes:
+    - ReadWriteMany
+  # Определяет политику удаления для PersistentVolume
+  # Показывает на то, что даже если PersistentVolumeClaim (PVC), который использует этот PV, будет удален, 
+  # то сам PV не будет удален автоматически и его содержимое сохранится. Вместо этого PV будет отмечен как 
+  # "Released" и будет ожидать дальнейшего действия, такого как повторное использование с помощью другого PVC или удаление вручную.
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: pdbalanced
+  gcePersistentDisk:
+    fsType: "ext4" 
+    pdName: "reddit-mongo-disk" # Имя диска в GCE
+```
+
+Создаем PVC
+mongo-claim.yml
+```yaml
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongo-pvc
+  namespace: dev
+spec:
+  storageClassName: pdbalanced
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      # Если объем PV будет больше чем PVC то PVC все равно займет весь имеющийся объем.
+      storage: 15Gi
+  selector:
+    matchLabels:
+      storage-class: pdbalanced
+```
+Но мы не можем так просто использовать один PV для нескольких PVC. Нужно чтобы хранилище поддерживало опцию ReadWriteMany
+тандартный Persistent Disk от Google Cloud не поддерживает доступ к нескольким узлам для чтения и записи (ReadWriteMany). Для этого нужно использовать другие решения, такие как Cloud Filestore или различные варианты сетевого хранилища, например, NFS, Ceph, GlusterFS, и т.д.
+Для того, чтобы использовать один PV несколькими PVC, необходимо, чтобы PersistentVolume имел атрибут accessModes: ReadWriteMany, а также был создан PersistentVolumeClaim (PVC), который запрашивает этот PV с атрибутом accessModes: ReadWriteMany.
 
 
+То что было в Лабе
+В нашем случаем пишем манифест без селектора
+mongo-claim.yml
 
+```yaml
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: mongo-pvc
+spec:
+  # Том может быть смонтирован в режиме чтения-записи только на одном узле (node) в кластере Kubernetes
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 15Gi
+```
+Мы выделили место в PV по запросу для нашей базы.
+Одновременно использовать один PV можно только по одному Claim’у
 
+Если Claim не найдет по заданным параметрам PV внутри кластера, либо тот будет занят другим Claim’ом то он сам создаст нужный ему PV воспользовавшись стандартным StorageClass
 
+В Kubernetes StorageClass - это объект, который описывает класс хранилища данных для PersistentVolume, т.е. это абстракция, позволяющая администраторам определить различные уровни доступности, скорости, стоимости, резервирования и других характеристик для хранилища данных.
 
+Default StorageClass в Kubernetes - это StorageClass, который используется по умолчанию для динамического создания PersistentVolume при создании PersistentVolumeClaim без явного указания StorageClass.
 
+Когда пользователь создает PVC без указания StorageClass, Kubernetes автоматически ищет Default StorageClass и использует его для создания PV. Если Default StorageClass не определен, пользователю нужно явно указать StorageClass при создании PVC.
+Default StorageClass может быть определен в кластере Kubernetes с помощью аннотации storageclass.kubernetes.io/is-default-class: "true" в манифесте StorageClass. Если несколько StorageClass помечены как Default, то будет использоваться только один, определенный последним.
 
+Узнать какой StorageClass установлен в default
+```bash 
+kubectl get storageclass -n dev
+```
+```bash 
+kubectl describe storageclass standard-rwo -n dev
+```
 
+Подключение PVC
+Подключим PVC к нашим Pod'ам
+mongo-deployment.yml
+
+#### Динамическое выделение Volume'ов
+
+Создав PersistentVolume мы отделили объект "хранилища" от наших Service'ов и Pod'ов. Теперь мы можем его при необходимости переиспользовать.
+
+Но нам гораздо интереснее создавать хранилища при необходимости и в автоматическом режиме. В этом нам помогут StorageClass’ы. Они описывают где (какой провайдер) и какие хранилища создаются.
+
+В нашем случае создадим StorageClass Fast так, чтобы монтировались SSD-диски для работы нашего хранилища.
+
+StorageClass
+
+Создадим описание StorageClass’а
+storage-fast.yml
+```yaml
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast
+# provisioner: kubernetes.io/gce-pd - это параметр, указывающий на используемый провайдер хранилища, который в данном случае является GCE Persistent Disk (GCP PD).
+provisioner: kubernetes.io/gce-pd
+parameters:
+  type: pd-ssd # Тип предоставляемого хранилища
+```
+Добавим StorageClass в кластер
+```bash 
+kubectl apply -f storage-fast.yml -n dev
+```
+PVC + StorageClass
+Создадим описание PersistentVolumeClaim 
+
+```yaml
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: mongo-pvc-dynamic
+spec:
+  # Том может быть смонтирован в режиме чтения-записи только на одном узле (node) в кластере Kubernetes
+  accessModes:
+    - ReadWriteOnce
+  # Создаем PersistantVolumeClaim ссылаясь на созданный нами StorageClass storage-fast.yml Вместо ссылки на созданный диск.
+  storageClassName: fast
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+Добавим StorageClass в кластер
+```bash 
+$ kubectl apply -f mongo-claim-dynamic.yml -n dev
+```
+
+Подключим PVC к нашим Pod'ам
+mongo-deployment.yml
+```yaml
+
+          claimName: mongo-pvc-dynamic
+```
+
+Обновим описание нашего Deployment'а
+```bash 
+$ kubectl apply -f mongo-deployment.yml -n dev
+```
+Давайте посмотрит какие в итоге у нас получились
+PersistentVolume'ы
+```bash
+kubectl get persistentvolume -n dev
+```
+
+На созданные Kubernetes'ом диски можно посмотреть в web console
+https://console.cloud.google.com/compute/disks

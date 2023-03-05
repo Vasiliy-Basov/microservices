@@ -1,0 +1,22 @@
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: reddit-mongo-disk
+  labels:
+    storage-class: pdbalanced
+spec:
+  capacity:
+    storage: 25Gi
+  # Том может быть смонтирован в режиме чтения-записи только на одном узле (node) в кластере Kubernetes, в таком режиме только один PVC может быть подключен. 
+  accessModes:
+    - ReadWriteMany
+  # Определяет политику удаления для PersistentVolume
+  # Показывает на то, что даже если PersistentVolumeClaim (PVC), который использует этот PV, будет удален, 
+  # то сам PV не будет удален автоматически и его содержимое сохранится. Вместо этого PV будет отмечен как 
+  # "Released" и будет ожидать дальнейшего действия, такого как повторное использование с помощью другого PVC или удаление вручную.
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: pdbalanced
+  gcePersistentDisk:
+    fsType: "ext4" 
+    pdName: "reddit-mongo-disk" # Имя диска в GCE

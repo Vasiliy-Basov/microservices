@@ -1,0 +1,14 @@
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: mongo-pvc-dynamic
+spec:
+  # Том может быть смонтирован в режиме чтения-записи только на одном узле (node) в кластере Kubernetes
+  accessModes:
+    - ReadWriteOnce
+  # Создаем PersistantVolumeClaim ссылаясь на созданный нами StorageClass storage-fast.yml Вместо ссылки на созданный диск.
+  storageClassName: fast
+  resources:
+    requests:
+      storage: 10Gi
