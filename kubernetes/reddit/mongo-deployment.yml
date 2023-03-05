@@ -30,14 +30,24 @@ spec:
         name: mongo
         # Точка монтирования в контейнере (не в POD-е)
         volumeMounts:
-        - name: mongo-persistent-storage
+        - name: mongo-gce-pd-storage
           # Путь в контейнере до базы данных
           mountPath: /data/db
       # Ассоциированные с POD-ом Volume-ы В данном примере mongo-persistent-storage является типом Kubernetes emptyDir, который создает временную директорию внутри контейнера.
       # При перезапуске контейнера, содержимое этой директории будет удалено.
-      volumes:
-      - name: mongo-persistent-storage
-        emptyDir: {}
+#      volumes:
+#      - name: mongo-gce-pd-storage
+#        emptyDir: {}
         # hostPath:
         #   path: /home/baggurd/kub_mongodb
-          
+      # Создаем диск в GCE.  
+      # volumes:
+      # - name: mongo-gce-pd-storage
+      #   gcePersistentDisk: # тип volume, указывает на использование Google Compute Engine Persistent Disk
+      #     pdName: reddit-mongo-disk # Имя диска который мы создали в GCP
+      #     fsType: ext4
+      volumes:
+      - name: mongo-gce-pd-storage
+        # Имя нашего PVC ресурса определенного в mongo-claim.yml
+        persistentVolumeClaim:
+          claimName: mongo-pvc-dynamic

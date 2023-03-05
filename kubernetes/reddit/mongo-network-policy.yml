@@ -1,0 +1,29 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-db-traffic
+  labels:
+    app: reddit
+spec:
+  # Выбираем объекты к которым будет применена политика по Label (т.е. к объекту mongodb-service.yml)
+  podSelector:
+    matchLabels:
+      app: reddit
+      component: mongo
+  # Задаем типы политик (Ingress и/или Egress) Это запрещающие правила     
+  policyTypes:
+  # ingress тип политики, который ограничивает входящий трафик в выбранные поды (т.е. к объекту mongodb-service.yml) т.е. запрещаем все входящие подключения, исходящие разрешены.
+  - Ingress
+  # Это разрешающие правила. Разрешить входящий трафик для подов с метками app=reddit и component=comment (т.е. для comment-service.yml)
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: reddit
+          component: comment
+    - podSelector:
+        matchLabels:
+          app: reddit
+          component: post    
+            
