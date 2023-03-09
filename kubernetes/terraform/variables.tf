@@ -1,10 +1,12 @@
 variable "project" {
   # Описание переменной
   description = "Project ID"
+  default = "docker-377610"
 }
 
 variable "region" {
   description = "Region"
+  default = "us-central1"
   # Значение по умолчанию
 }
 

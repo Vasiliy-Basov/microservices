@@ -7,7 +7,6 @@ terraform {
 }
 # Provider Configuration for GCP
 provider "google" {
-  credentials = file("/home/baggurd/docker.json")
   project = var.project
   region  = var.region
 }

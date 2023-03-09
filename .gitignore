@@ -4,3 +4,6 @@
 *.tfstate.backup
 *.lock.hcl
 /terraform/bucket/.terraform
+kubernetes/terraform/kubectl
+kubernetes/terraform/kubectl.sha256
+kubernetes/terraform/.terraform/providers/registry.terraform.io/hashicorp/google/4.56.0/linux_amd64/terraform-provider-google_v4.56.0_x5

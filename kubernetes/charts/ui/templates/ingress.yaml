@@ -1,4 +1,5 @@
 ---
+# Когда мы создаем ingress то GKE Ingress controller создается и конфигурируется на external HTTP(S) load balancer (по-умолчанию)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -6,11 +7,14 @@ metadata:
   # это блок метаданных (metadata) для Kubernetes-объекта, который позволяет хранить произвольные пары "ключ-значение" в виде аннотаций
   # Например, в Ingress-объекте аннотации могут использоваться для настройки поведения Ingress-контроллера, который обрабатывает HTTP-запросы и маршрутизирует их на соответствующие сервисы в Kubernetes-кластере.
   annotations:
-    # Перенаправляет все http запросы на https, также требует, чтобы на сервере был установлен SSL-сертификат и ключ, даже если само соединение использует HTTP-протокол. Если сервер не настроен с SSL-сертификатом и ключом, то запросы будут отвергнуты с ошибкой.    
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    # изменяет путь запроса на /, что означает, что он будет передан целевому сервису без изменений. Таким образом, в приложении можно настроить обработку запросов, которые пришли на конкретный путь, например /api/v1 или /dashboard, и все запросы будут корректно переданы соответствующему сервису внутри кластера Kubernetes.
-    nginx.ingress.kubernetes.io/rewrite-target: /
+    kubernetes.io/ingress.global-static-ip-name: ingress-ip
+    # If the class annotation is not specified it defaults to "gce".
+    kubernetes.io/ingress.class: "gce"
+    # # Перенаправляет все http запросы на https, также требует, чтобы на сервере был установлен SSL-сертификат и ключ, даже если само соединение использует HTTP-протокол. Если сервер не настроен с SSL-сертификатом и ключом, то запросы будут отвергнуты с ошибкой.    
+    # nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # # изменяет путь запроса на /, что означает, что он будет передан целевому сервису без изменений. Таким образом, в приложении можно настроить обработку запросов, которые пришли на конкретный путь, например /api/v1 или /dashboard, и все запросы будут корректно переданы соответствующему сервису внутри кластера Kubernetes.
+    # nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   tls:
   - secretName: ui-ingress
