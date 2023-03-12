@@ -23,7 +23,7 @@ spec:
 #       nodePort: 32091
       protocol: TCP
       # Порт pod-а
-      targetPort: 9292
+      targetPort: {{ .Values.service.internalPort }}
   # К каким объектам будет применяться настройка:    
   selector:
     app: reddit

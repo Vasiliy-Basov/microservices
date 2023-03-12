@@ -1,8 +1,8 @@
 ---
 apiVersion: v2
-name: ui
+name: post
 version: 1.0.0
-description: OTUS reddit application UI
+description: OTUS reddit application POST
 maintainers:
   - name: VasiliyBasov
     email: vasiliy.basov.82@gmail.com

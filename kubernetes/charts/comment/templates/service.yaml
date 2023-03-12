@@ -1,0 +1,23 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # В DNS появится запись для comment. Что бы узнать ip адрес: kubectl get svc comment
+  # {{ template "comment.fullname" . }} - это значение берется из файла _helper.tpl
+  name: {{ template "comment.fullname" . }}
+  # Метки для сервиса comment: "app: reddit" и "component: comment", release: {{ .Release.Name }}
+  labels:
+    app: reddit
+    component: comment
+    release: {{ .Release.Name }}
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.service.externalPort }}  # открываем порт по адресу comment:9292
+    protocol: TCP
+    targetPort: {{ .Values.service.internalPort }} # перенаправляет трафик на 9292 в поды, которые имеют метки "app: reddit" и "component: comment", release: {{ .Release.Name }}
+  # Это означает, что любой трафик, направленный на сервис comment:9292 будет автоматически распределен между подами, которые соответствуют меткам селектора. Прописанные в comment-deployment.yml
+  selector:
+    app: reddit
+    component: comment
+    release: {{ .Release.Name }}

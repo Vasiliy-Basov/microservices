@@ -1,0 +1,49 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-{{ .Chart.Name }}
+  # Метки (labels) - это пары ключ-значение, которые могут использоваться для сортировки, поиска и выборки объектов. 
+  # Например, можно использовать метки для разделения приложений на продукционные и тестовые версии.
+  labels:
+    app: reddit
+    component: comment
+    release: {{ .Release.Name }}    
+#   annotations:
+#     description: "This is my comment pod"  
+spec:
+  replicas: 1
+  # поле которое определяет, какие объекты Kubernetes будут управляться данным ресурсом
+  # здесь метка app: reddit И comment=ui соответствует метке app: reddit И comment=ui в metadata.labels pod шаблона определяемого в template
+  # Поэтому важно в описании POD-а (секция template) задать нужные метки (labels)
+  selector:
+    matchLabels:
+      app: reddit
+      component: comment
+      release: {{ .Release.Name }}      
+  # Здесь задается шаблон pod    
+  template:
+    metadata:
+      name: comment
+      labels:
+        app: reddit
+        component: comment
+        release: {{ .Release.Name }}        
+    spec:
+      containers:
+      - name: comment
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        ports:
+        - containerPort: {{ .Values.service.internalPort }}
+          name: comment
+          protocol: TCP
+        # Прописываем переменную чтобы получить доступ к service comment-mongodb-service.yml Базе данных comment по имени comment-db.
+        # (Эта переменная также прописана в Dockerfile неправильно) 
+        # определяем значение переменной COMMENT_DATABASE_HOST (адрес либо имя с базой данных mongo для comment) которая будет равна либо значению в values.yaml (например внешняя база данных)
+        # либо если значение не задано '<название релиза>-mongodb' это значение соответствует адресу базы, поднятой внутри релиза         
+        env:
+        - name: COMMENT_DATABASE_HOST
+          value: {{ .Values.databaseHost | default (printf "%s-mongodb" .Release.Name) }}       
+    # Задаем секрет с паролем от dockerhub который мы ранеее поместили в секреты kubernetes    
+      imagePullSecrets:
+      - name: regcred

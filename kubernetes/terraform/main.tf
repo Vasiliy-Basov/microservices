@@ -37,9 +37,9 @@ resource "google_container_cluster" "dev-cluster" {
       disabled = false
     }
   }
-    provisioner "local-exec" {
+    /* provisioner "local-exec" {
     command = "gcloud container clusters get-credentials dev-cluster --zone us-central1-c --project docker-377610 && kubectl apply -f ../reddit/dev-namespace.yml && kubectl apply -f ../reddit/ -n dev"
-  }
+  } */
 }
 
 resource "google_container_node_pool" "primary_nodes" {
