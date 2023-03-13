@@ -1,0 +1,8 @@
+---
+apiVersion: v2
+name: reddit
+version: 0.1.0
+description: OTUS sample reddit application
+maintainers:
+  - name: VasiliyBasov
+    email: vasiliy.basov.82@gmail.com

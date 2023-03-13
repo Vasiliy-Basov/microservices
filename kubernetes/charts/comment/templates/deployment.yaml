@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-{{ .Chart.Name }}
+  name: {{ template "comment.fullname" . }}
   # Метки (labels) - это пары ключ-значение, которые могут использоваться для сортировки, поиска и выборки объектов. 
   # Например, можно использовать метки для разделения приложений на продукционные и тестовые версии.
   labels:

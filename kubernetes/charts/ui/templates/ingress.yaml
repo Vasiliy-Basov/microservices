@@ -3,7 +3,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ .Release.Name }}-{{ .Chart.Name }}
+  name: {{ template "ui.fullname" . }}
   # это блок метаданных (metadata) для Kubernetes-объекта, который позволяет хранить произвольные пары "ключ-значение" в виде аннотаций
   # Например, в Ingress-объекте аннотации могут использоваться для настройки поведения Ingress-контроллера, который обрабатывает HTTP-запросы и маршрутизирует их на соответствующие сервисы в Kubernetes-кластере.
   annotations:
@@ -35,7 +35,7 @@ spec:
           # мы указываем, что будем использовать сервис для обработки запросов.
           service:
             # мы указываем имя сервиса, который будет обрабатывать запросы.
-            name: {{ .Release.Name }}-{{ .Chart.Name }}
+            name: {{ template "ui.fullname" . }}
             # Порт на который будет посылаться трафик на сервис NodePort (прописан в ui-service.yml)
             port:
               number: {{ .Values.service.externalPort }}

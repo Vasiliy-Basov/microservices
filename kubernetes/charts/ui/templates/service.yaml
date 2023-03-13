@@ -4,7 +4,7 @@ kind: Service
 metadata:
   # .Release.Name это имя релиза которое мы устанавливаем (или оно назначается автоматически если мы его не указываем) когда запускаем команду helm install
   # .Chart.Name - это имя чарта, берется из файла Chart.yaml
-  name: {{ .Release.Name }}-{{ .Chart.Name }}
+  name: {{ template "ui.fullname" . }}
   labels:
     app: reddit
     component: ui
