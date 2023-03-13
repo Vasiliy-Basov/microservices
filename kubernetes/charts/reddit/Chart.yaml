@@ -6,3 +6,19 @@ description: OTUS sample reddit application
 maintainers:
   - name: VasiliyBasov
     email: vasiliy.basov.82@gmail.com
+dependencies:
+  - name: ui
+    version: "1.0.0"
+    repository: "file://../ui"
+
+  - name: post
+    version: "1.0.0"
+    repository: "file://../post"
+
+  - name: comment
+    version: "1.0.0"
+    repository: "file://../comment"
+
+  - name: mongodb
+    version: "4.0.x"
+    repository: "https://charts.bitnami.com/bitnami"
