@@ -20,5 +20,5 @@ dependencies:
     repository: "file://../comment"
 
   - name: mongodb
-    version: "4.0.x"
+    version: "13.9.1"
     repository: "https://charts.bitnami.com/bitnami"

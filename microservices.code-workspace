@@ -10,5 +10,10 @@
 			"path": "../gitlab/example"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"editor.tokenColorCustomizations": {
+			"comments": "",
+			"textMateRules": []
+		}
+	}
 }
