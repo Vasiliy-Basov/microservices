@@ -1,22 +1,22 @@
 ---
 # Переменные в этом файле будут иметь более высокий приоритет чем переменные заданные непосредственно в зависимых чартах (comment, ui, post)
-comment: 
-  service:
-    externalPort: 9292
-  image:
-    repository: vasiliybasov/comment
-    tag: latest
+# comment: 
+#   service:
+#     externalPort: 9292
+#   image:
+#     repository: vasiliybasov/comment
+#     tag: latest
 
-post:
-  service:
-    externalPort: 5000
-  image:
-    repository: vasiliybasov/post
-    tag: latest
+# post:
+#   service:
+#     externalPort: 5000
+#   image:
+#     repository: vasiliybasov/post
+#     tag: latest
 
-ui:
-  service:
-    externalPort: 9292
-  image:
-    repository: vasiliybasov/ui
-    tag: latest
+# ui:
+#   service:
+#     externalPort: 9292
+#   image:
+#     repository: vasiliybasov/ui
+#     tag: latest
