@@ -6,3 +6,8 @@ service:
 image:
   repository: vasiliybasov/ui
   tag: latest
+
+postHost:
+postPort:
+commentHost:
+commentPort:

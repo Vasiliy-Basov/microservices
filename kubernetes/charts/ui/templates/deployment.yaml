@@ -10,7 +10,7 @@ metadata:
   annotations:
     description: "This is my ui pod"  
 spec:
-  replicas: 3
+  replicas: 1
   # стратегия Recreate означает, что в случае обновления все старые поды будут остановлены, а затем запущены новые, что может привести к временной недоступности приложения на время пересоздания подов
   strategy:
     type: Recreate
@@ -41,13 +41,25 @@ spec:
         - containerPort: {{ .Values.service.internalPort }}
           name: ui
           protocol: TCP
+        env:
         # в данном примере переменная окружения ENV будет содержать значение равное названию пространства имен,
         # в котором находится данный Pod. Например, если этот Pod находится в пространстве имен dev, 
         # то значение переменной окружения ENV будет равно dev.
-        env:
         - name: ENV
           valueFrom:
             fieldRef:
-              fieldPath: metadata.namespace        
+              fieldPath: metadata.namespace
+        # Так как в Dockerfile UI-service уже заданы имена переменных которые ссылаются на post и comment сервисы, 
+        # Например (ENV POST_SERVICE_HOST post) но эти имена теперь у нас задаются динамически в зависимости от имени чарта.      
+        # Поэтому мы должны переопределить эти переменные:
+        - name: POST_SERVICE_HOST
+          value: {{ .Values.postHost | default (printf "%s-post") .Release.Name }}
+        - name: POST_SERVICE_PORT
+          # Для чисел и булевых значений необходимо добавлять функцию добавления кавычек | quote
+          value: {{ .Values.postPort | default "5000" | quote }}
+        - name: COMMENT_SERVICE_HOST
+          value: {{ .Values.commentHost | default (printf "%s-comment") .Release.Name }}
+        - name: COMMENT_SERVICE_PORT
+          value: {{ .Values.commentPort | default "9292" | quote }} 
       imagePullSecrets:
       - name: regcred

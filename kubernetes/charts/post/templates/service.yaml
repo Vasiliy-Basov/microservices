@@ -3,7 +3,7 @@ apiVersion: v1
 kind: Service
 metadata:
   # В DNS появится запись для {{ .Release.Name }}-{{ .Chart.Name }}. Что бы узнать ip адрес: kubectl get svc post
-  name: {{ template "comment.fullname" . }}
+  name: {{ template "post.fullname" . }}
   # Метки для сервиса post: "app: reddit" и "component: post"
   labels:
     app: reddit
