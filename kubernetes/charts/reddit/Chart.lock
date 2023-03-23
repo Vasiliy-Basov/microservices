@@ -9,7 +9,7 @@ dependencies:
   repository: file://../comment
   version: 1.0.0
 - name: mongodb
-  repository: https://charts.bitnami.com/bitnami
-  version: 13.9.1
-digest: sha256:ae83163177e07aea011c2d0aa65008104b2684cc23271cb389b37d16194e057b
-generated: "2023-03-15T19:18:40.747971039+03:00"
+  repository: file://../mongodb
+  version: 1.0.0
+digest: sha256:4e3fd8c501a5e823549c2246af7369684da75b79bdb63ced4664585374300ca7
+generated: "2023-03-20T19:14:41.325178232+03:00"

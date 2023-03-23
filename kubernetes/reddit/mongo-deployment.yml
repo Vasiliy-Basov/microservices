@@ -48,6 +48,6 @@ spec:
       #     fsType: ext4
       volumes:
       - name: mongo-gce-pd-storage
-        # Имя нашего PVC ресурса определенного в mongo-claim.yml
+        # Имя нашего PVC ресурса определенного в mongo-claim-dynamic.yml
         persistentVolumeClaim:
           claimName: mongo-pvc-dynamic
