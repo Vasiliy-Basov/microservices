@@ -1,0 +1,137 @@
+stages:
+  - test
+  - staging
+  - production
+
+# Ничего не делает выходит с кодом 0
+test:
+  stage: test
+  script:
+    - exit 0
+  only:
+    - triggers
+    - branches
+
+staging:
+  stage: staging
+  script:
+  - install_dependencies
+  - ensure_namespace
+  - install_tiller
+  - deploy
+  variables:
+    KUBE_NAMESPACE: staging
+  environment:
+    name: staging
+    url: http://staging
+  only:
+    refs:
+      - main
+    kubernetes: active
+
+production:
+  stage: production
+  script:
+    - install_dependencies
+    - ensure_namespace
+    - install_tiller
+    - deploy
+  variables:
+    KUBE_NAMESPACE: production
+  environment:
+    name: production
+    url: http://production
+  when: manual
+  only:
+    refs:
+      - main
+    kubernetes: active
+
+.auto_devops: &auto_devops |
+  # Auto DevOps variables and functions
+  # Если переменная TRACE определена (т.е. ее значение не равно пустой строке) то set -x будет выполнена, и режим трассировки будет включен. 
+  # Это означает, что перед выполнением каждой команды, команда и ее аргументы выводятся на экран для отслеживания выполнения скрипта.
+  # Кроме того, set -x также включает расширенный режим сообщений об ошибках (errexit), который прерывает выполнение скрипта при обнаружении ошибок в командах.
+  [[ "$TRACE" ]] && set -x
+  export CI_REGISTRY="index.docker.io"
+  # $CI_PROJECT_PATH это предопределенная переменная окружения в формате ИмяГруппы/ИмяПроекта
+  export CI_APPLICATION_REPOSITORY=$CI_REGISTRY/$CI_PROJECT_PATH
+  # $CI_COMMIT_REF_SLUG это имя branch или tag в формате переделанном для URLs, host names and domain names
+  export CI_APPLICATION_TAG=$CI_COMMIT_REF_SLUG
+  # Не до конца понял где эта переменная используется. CI_JOB_ID это встроенная переменная с уникальным для всех JOB-ов ID JOB 
+  export CI_CONTAINER_NAME=ci_job_build_${CI_JOB_ID}
+  export TILLER_NAMESPACE="kube-system"
+
+  function deploy() {
+    echo $KUBE_NAMESPACE
+    # Если вызываем функцию с аргументом то переменная track будет равна этому первому аргументу если аргумента нет то будет равна stable
+    track="${1-stable}"
+    # Переменная окружения $CI_ENVIRONMENT_SLUG равнв либо production либо staging что указано в environment.name
+    name="$CI_ENVIRONMENT_SLUG"
+    # Загружаем все зависимости указанные в файле Charts.yml и помещаем в архивы tgz
+    helm dep build reddit
+
+    # for microservice in $(helm dep ls | grep "file://" | awk '{print $1}') ; do
+    #   SET_VERSION="$SET_VERSION \ --set $microservice.image.tag='$(curl http://gitlab-gitlab/$CI_PROJECT_NAMESPACE/ui/raw/master/VERSION)' "
+
+    # Из 
+    helm upgrade --install \
+      --wait \
+      --set ui.ingress.host="$host" \
+      --set ui.image.tag="$(curl http://gitlab-gitlab/$CI_PROJECT_NAMESPACE/ui/raw/master/VERSION)" \
+      --set post.image.tag="$(curl http://gitlab-gitlab/$CI_PROJECT_NAMESPACE/post/raw/master/VERSION)" \
+      --set comment.image.tag="$(curl http://gitlab-gitlab/$CI_PROJECT_NAMESPACE/comment/raw/master/VERSION)" \
+      --namespace="$KUBE_NAMESPACE" \
+      --version="$CI_PIPELINE_ID-$CI_JOB_ID" \
+      "$name" \
+      reddit
+  }
+
+  function install_dependencies() {
+
+    apk add -U openssl curl tar gzip bash ca-certificates git
+    wget -q -O /etc/apk/keys/sgerrand.rsa.pub https://alpine-pkgs.sgerrand.com/sgerrand.rsa.pub
+    wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.23-r3/glibc-2.23-r3.apk
+    apk add glibc-2.23-r3.apk
+    rm glibc-2.23-r3.apk
+
+    curl https://kubernetes-helm.storage.googleapis.com/helm-v2.7.2-linux-amd64.tar.gz | tar zx
+
+    mv linux-amd64/helm /usr/bin/
+    helm version --client
+
+    curl -L -o /usr/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
+    chmod +x /usr/bin/kubectl
+    kubectl version --client
+  }
+
+  function ensure_namespace() {
+    kubectl describe namespace "$KUBE_NAMESPACE" || kubectl create namespace "$KUBE_NAMESPACE"
+  }
+
+  function install_tiller() {
+    echo "Checking Tiller..."
+    helm init
+    kubectl rollout status -n "$TILLER_NAMESPACE" -w "deployment/tiller-deploy"
+    if ! helm version --debug; then
+      echo "Failed to init Tiller."
+      return 1
+    fi
+    echo ""
+  }
+
+  function delete() {
+    track="${1-stable}"
+    name="$CI_ENVIRONMENT_SLUG"
+    helm delete "$name" || true
+  }
+
+default:
+  # interruptible если true то задание будет отменено когда запускается новый pipeline до завершения данного задания.
+  interruptible: false
+  # Образ по-умолчанию в котором все будет запускаться (Образ берется из DockerHub)
+  image: alpine:latest
+  # Блок команд который будет выполнен перед запуском любого задания (job)
+  before_script:
+    # Здесь (с помощью *) мы определяем что все команды блока .auto_devops: &auto_devops | будут включены в before_script
+    - *auto_devops

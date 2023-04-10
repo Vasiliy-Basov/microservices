@@ -1,0 +1,65 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "ui.fullname" . }}
+  labels:
+    app: reddit
+    component: ui
+    release: {{ .Release.Name }}    
+  annotations:
+    description: "This is my ui pod"  
+spec:
+  replicas: 1
+  # стратегия Recreate означает, что в случае обновления все старые поды будут остановлены, а затем запущены новые, что может привести к временной недоступности приложения на время пересоздания подов
+  strategy:
+    type: Recreate
+  # поле которое определяет, какие объекты Kubernetes будут управляться данным ресурсом
+  # В данном случае - контроллер будет считать POD-ы с метками: app=reddit И component=ui. Поэтому важно в описании POD-а (секция template) задать нужные метки (labels)
+  selector:
+    matchLabels:
+      app: reddit
+      component: ui
+      release: {{ .Release.Name }}      
+  # Здесь задается шаблон pod     
+  template:
+    metadata:
+      name: ui-pod
+      labels:
+        app: reddit
+        component: ui
+        release: {{ .Release.Name }}        
+    spec:
+      containers:
+      - image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+        name: ui
+        # определяет порт, который будет использоваться для связи с контейнером.
+        ports:
+        # Это параметр контейнера в Kubernetes, который определяет порт, на котором контейнер должен слушать входящие соединения. 
+        # Таким образом, приложение, работающее в контейнере, будет доступно на этом порту внутри кластера Kubernetes, 
+        # а также снаружи кластера, если соответствующие правила доступа настроены.
+        - containerPort: {{ .Values.service.internalPort }}
+          name: ui
+          protocol: TCP
+        env:
+        # Так как в Dockerfile UI-service уже заданы имена переменных которые ссылаются на post и comment сервисы, 
+        # Например (ENV POST_SERVICE_HOST post) но эти имена теперь у нас задаются динамически в зависимости от имени чарта.      
+        # Поэтому мы должны переопределить эти переменные:        
+        - name: POST_SERVICE_HOST
+          value: {{  .Values.postHost | default (printf "%s-post" .Release.Name) }}
+          # Для чисел и булевых значений необходимо добавлять функцию добавления кавычек | quote  
+        - name: POST_SERVICE_PORT
+          value: {{  .Values.postPort | default "5000" | quote }}
+        - name: COMMENT_SERVICE_HOST
+          value: {{  .Values.commentHost | default (printf "%s-comment" .Release.Name) }}
+        - name: COMMENT_SERVICE_PORT
+          value: {{  .Values.commentPort | default "9292" | quote }}
+        # в данном примере переменная окружения ENV будет содержать значение равное названию пространства имен,
+        # в котором находится данный Pod. Например, если этот Pod находится в пространстве имен dev, 
+        # то значение переменной окружения ENV будет равно dev.          
+        - name: ENV
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+      # imagePullSecrets:
+      # - name: regcred

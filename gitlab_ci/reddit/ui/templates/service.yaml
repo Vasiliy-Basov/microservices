@@ -1,0 +1,31 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # .Release.Name это имя релиза которое мы устанавливаем (или оно назначается автоматически если мы его не указываем) когда запускаем команду helm install
+  # .Chart.Name - это имя чарта, берется из файла Chart.yaml
+  name: {{ template "ui.fullname" . }}
+  labels:
+    app: reddit
+    component: ui
+    release: {{ .Release.Name }} # помечаем что сервис из конкретного релиза
+spec:
+  # Настройка для полученияя доступа извне. Доступ на порту 32092
+#  type: LoadBalancer
+  # Для работы с Ingress в GCP нам нужен минимум Service с типом NodePort: 
+  type: NodePort
+  ports:
+    # Порт который будет открыт на балансировщике
+  #   - port: 80
+    # Порт на который будет обращаться Ingress сервис.
+    - port: {{ .Values.service.externalPort }} # эта переменная берется из файла values.yaml
+      # Также на ноде будет открыт порт, но нам он не нужен и его можно даже убрать
+#       nodePort: 32091
+      protocol: TCP
+      # Порт pod-а
+      targetPort: {{ .Values.service.internalPort }}
+  # К каким объектам будет применяться настройка:    
+  selector:
+    app: reddit
+    component: ui
+    release: {{ .Release.Name }} # Означает что мы будем применять только к подам из нашего релиза.
