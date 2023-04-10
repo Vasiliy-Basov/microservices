@@ -11,12 +11,21 @@ provider "google" {
   region  = var.region
 }
 
+# Создаем ip address для gitlab
+resource "google_compute_address" "gitlab_ip" {
+  name   = "dev-cluster-gitlab"
+  region = var.region
+  project = var.project
+}
+
 # Resource to create the GKE Cluster
 resource "google_container_cluster" "dev-cluster" {
   name               = "dev-cluster"
-  location           = "us-central1-c"
+  location           = var.zone
   initial_node_count = 1
   remove_default_node_pool = true
+  # включаем устаревшие права доступа legacy Attribute-Based Access Control (для более простой настройка) по-умолчанию используется RBAC он отключится
+  # enable_legacy_abac = true
 
   # Эта настройка отключает автоматическое создание клиентских сертификатов при настройке кластера Kubernetes. 
   # Клиентские сертификаты - это цифровые сертификаты, которые выдаются клиентам для аутентификации в кластере Kubernetes.
@@ -42,15 +51,16 @@ resource "google_container_cluster" "dev-cluster" {
   } */
 }
 
+# Создвем ноды кластера
 resource "google_container_node_pool" "primary_nodes" {
   name       = "my-node-pool"
-  location   = "us-central1"
+  location   = var.zone
   cluster    = google_container_cluster.dev-cluster.id
-  node_count = 2
+  node_count = 3
 
   node_config {
-    machine_type = "g1-small"
-    disk_size_gb = 20
+    machine_type = "n2-standard-2"
+    disk_size_gb = 60
     # oauth_scopes - это список OAuth-областей видимости, которые необходимо предоставить сервисному аккаунту. 
     # В данном случае, указана область видимости https://www.googleapis.com/auth/cloud-platform, которая предоставляет доступ к ресурсам Google Cloud Platform.
     oauth_scopes = [
@@ -58,3 +68,29 @@ resource "google_container_node_pool" "primary_nodes" {
     ]    
   }
 }
+
+# Добавляем в  Cloud DNS зону basov-world запись для нашего Gitlab сервера.
+resource "google_dns_record_set" "gitlab_basov_world" {
+  name        = "*.gitlabci.basov.world."
+  type        = "A"
+  ttl         = 300
+  managed_zone = "basov-world"
+  rrdatas     = [google_compute_address.gitlab_ip.address]
+}
+
+# Добавляем namespace для gitlab
+resource "null_resource" "get-credentials" {
+
+  depends_on = [google_container_cluster.dev-cluster]  
+  provisioner "local-exec" {
+    command = "gcloud container clusters get-credentials ${google_container_cluster.dev-cluster.name} --zone ${var.zone} --project ${var.project} && kubectl apply -f gitlab-namespace.yml"
+  }
+}
+
+# Почему то этот код не работает
+/* resource "kubernetes_namespace" "gitlab_namespace" {
+  depends_on = [null_resource.get-credentials]
+  metadata {
+    name = "gitlab"
+  }
+} */

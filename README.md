@@ -1,4 +1,4 @@
-HW#14 (docker-1)
+# HW#14 (docker-1)
 В данной работе мы:
 
 установили docker, docker-compose, docker-machine;
@@ -26,7 +26,7 @@ $ docker rm <u_container_id> - удаление контейнер (должен
 
 $ docker rmi - удаление image, если от него не зависят запущенные контейнеры.
 
-## HW#15 (docker-2)
+# HW#15 (docker-2)
 В данной работе мы:
 * создали docker host;
 * описали Dockerfile;
@@ -158,7 +158,7 @@ d – detached mode В таком случае можно будет споко�
 проверим что приложение работает 
 http://127.0.0.1:9292 
 
-### Задание со * 
+## Задание со * 
 Задание:
 Теперь, когда есть готовый образ с приложением, можно автоматизировать поднятие нескольких инстансов в GCP, установку на них докера и запуск там образа <your-login>/otus-reddit:1.0 Нужно реализовать в виде прототипа в директории /docker-monolith/infra/
 * Поднятие инстансов с помощью Terraform, их количество задается переменной;
@@ -204,7 +204,7 @@ infra/ansible$ ansible-playbook playbooks/otus_reddit.yml
 Теперь приложение доступно по адресу:
 x.x.x.x:9292
 
-## HW#16 (docker-3)
+# HW#16 (docker-3)
 В данной работе мы:
 * научились описывать и собирать Docker-образы для сервисного приложения;
 * научились оптимизировать работу с Docker-образами;
@@ -248,7 +248,8 @@ ui - веб-интерфейс, работающий с другими серв�
 Создаем в каждом каталоге три Dockerfile: 
 
 В соответствии с рекомендациями hadolint было внесены изменения:
-### ui/Dockerfile
+## ui/Dockerfile
+
 RUN apt-get update -qq && apt-get install -y build-essential
 =>
 RUN apt-get update -qq && apt-get install -y build-essential --no-install-recommends \
@@ -262,7 +263,7 @@ ADD . $APP_HOME
 =>
 COPY . $APP_HOME
 
-### comment/Dockerfile
+## comment/Dockerfile
 RUN apt-get update -qq && apt-get install -y build-essential
 =>
 RUN apt-get update -qq && apt-get install -y build-essential --no-install-recommends \
@@ -276,7 +277,7 @@ ADD . $APP_HOME
 =>
 COPY . $APP_HOME
 
-### post-py/Dockerfile
+## post-py/Dockerfile
 ADD . /app
 =>
 COPY . /app
@@ -365,7 +366,7 @@ docker logs <id container>
 ```bash
 docker pull mongo:4.0-xenial 
 ```
-В файл requirments.txt post нужно добавить markupsafe==1.1.1 
+В файл requirements.txt post нужно добавить markupsafe==1.1.1 
 
 
 Задание со * (стр. 15) 
@@ -1144,7 +1145,8 @@ services:
 
 ## HomeWork 19 - Устройство Gitlab CI. Построение процесса непрерывной поставки
 Ставим сервер с помощью terraform и ansible 
-/home/baggurd/microservices/terraform/Gitlab
+
+/microservices/terraform/Gitlab
 
 Для запуска Gitlab CI мы будем использовать omnibus-установку, у
 этого подхода есть как свои плюсы, так и минусы.
@@ -1153,18 +1155,20 @@ services:
 Минусом такого типа установки является то, что такую инсталляцию
 тяжелее эксплуатировать и дорабатывать, но долговременная
 эксплуатация этого сервиса не входит в наши цели.
-Более подробно об этом опять же в документации
+Более подробно об этом опять же в документации:
 https://docs.gitlab.com/omnibus/README.html
+
 https://docs.gitlab.com/omnibus/docker/README.html
 
 В ansible уже прописаны эти настройки для gitlab:
-# mkdir -p /srv/gitlab/config /srv/gitlab/data /srv/gitlab/logs
-# cd /srv/gitlab/
-# touch docker-compose.yml
-
-Заполняем docker-compose.yml:
+```bash
+mkdir -p /srv/gitlab/config /srv/gitlab/data /srv/gitlab/logs
+cd /srv/gitlab/
+touch docker-compose.yml
 ```
-version: "3"
+Заполняем docker-compose.yml на сервере который создали:
+```yaml
+version: "3.6"
 
 services:
   web:
@@ -1173,7 +1177,8 @@ services:
     hostname: 'gitlab.example.com'
     environment:
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://34.77.7.178'
+        external_url 'http://34.79.155.96'
+    # Первый порт это порт ВМ второй порт внутри контейнера.    
     ports:
       - '80:80'
       - '443:443'
@@ -1182,9 +1187,13 @@ services:
       - '/srv/gitlab/config:/etc/gitlab'
       - '/srv/gitlab/logs:/var/log/gitlab'
       - '/srv/gitlab/data:/var/opt/gitlab'
+    # In the example you provided, shm_size: '256m', the value '256m' specifies that the container should have 256 megabytes of shared memory allocated for its /dev/shm directory. This can be useful for applications that require more memory for their shared memory files. default 64mb 
+    shm_size: '256m'
+
 
 ```
 Для установки начального пароля нужно прописать переменные
+(не сработало)
 
 ```
 GITLAB_ROOT_EMAIL="root@local"
@@ -1211,7 +1220,7 @@ docker exec -it 522e6ca5a5c2 bash
 ```
 sudo gitlab-rake "gitlab:password:reset"
 ```
-или можем посмотреть назначенный пароль 
+или можем посмотреть назначенный пароль username root
 ```
 cat etc/gitlab/initial_root_password
 ```
@@ -3922,7 +3931,7 @@ kubectl describe storageclass standard-rwo -n dev
 Подключим PVC к нашим Pod'ам
 mongo-deployment.yml
 
-#### Динамическое выделение Volume'ов
+### Динамическое выделение Volume'ов
 
 Создав PersistentVolume мы отделили объект "хранилища" от наших Service'ов и Pod'ов. Теперь мы можем его при необходимости переиспользовать.
 

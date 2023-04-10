@@ -1,0 +1,30 @@
+Подключение к кластеру
+gcloud container clusters get-credentials dev-cluster --zone us-central1-c
+
+
+helm repo add gitlab https://charts.gitlab.io/
+helm repo update
+
+https://docs.gitlab.com/charts/installation/command-line-options.html - опции
+
+helm upgrade --install gitlab gitlab/gitlab --timeout 600s \
+  --set global.hosts.domain=gitlabci.basov.world \
+  --set global.hosts.externalIP=34.136.72.77 \
+  --set certmanager-issuer.email=baggurd@mail.ru \
+  --set global.edition=ce \
+  --set gitlab-runner.runners.privileged=true \
+  -n gitlab
+
+Получаем пароль
+kubectl get secrets -n gitlab | grep init
+kubectl get secret gitlab-gitlab-initial-root-password -ojsonpath='{.data.password}' -n gitlab | base64 --decode ; echo
+IAbJDbuN1SzS2iUBeSufV5dGca2YkZcxyLhHXCekPHG5MtDTdIZGaQgAeDPB9cv1
+
+kubectl get pods -n gitlab -w
+
+kubectl get ingress -n gitlab
+
+Просмотреть проблемы с сертификатами GITLAB
+kubectl describe certificate,order,challenge --all-namespaces
+
+Let's Encrypt т.е. настройка certmanager-issuer.email=baggurd@mail.ru позволяет создать только 5 сертификатов в течении 7 суток.
