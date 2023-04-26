@@ -17,7 +17,6 @@ staging:
   script:
   - install_dependencies
   - ensure_namespace
-  - install_tiller
   - deploy
   variables:
     KUBE_NAMESPACE: staging
@@ -34,7 +33,6 @@ production:
   script:
     - install_dependencies
     - ensure_namespace
-    - install_tiller
     - deploy
   variables:
     KUBE_NAMESPACE: production
@@ -60,13 +58,12 @@ production:
   export CI_APPLICATION_TAG=$CI_COMMIT_REF_SLUG
   # Не до конца понял где эта переменная используется. CI_JOB_ID это встроенная переменная с уникальным для всех JOB-ов ID JOB 
   export CI_CONTAINER_NAME=ci_job_build_${CI_JOB_ID}
-  export TILLER_NAMESPACE="kube-system"
 
   function deploy() {
     echo $KUBE_NAMESPACE
     # Если вызываем функцию с аргументом то переменная track будет равна этому первому аргументу если аргумента нет то будет равна stable
     track="${1-stable}"
-    # Переменная окружения $CI_ENVIRONMENT_SLUG равнв либо production либо staging что указано в environment.name
+    # Переменная окружения $CI_ENVIRONMENT_SLUG равна либо production либо staging что указано в environment.name
     name="$CI_ENVIRONMENT_SLUG"
     # Загружаем все зависимости указанные в файле Charts.yml и помещаем в архивы tgz
     helm dep build reddit
@@ -74,13 +71,16 @@ production:
     # for microservice in $(helm dep ls | grep "file://" | awk '{print $1}') ; do
     #   SET_VERSION="$SET_VERSION \ --set $microservice.image.tag='$(curl http://gitlab-gitlab/$CI_PROJECT_NAMESPACE/ui/raw/master/VERSION)' "
 
-    # Из 
+    # $KUBE_NAMESPACE Задается выше в блоке variables.KUBE_NAMESPACE
+    # Этот ID $CI_PIPELINE_ID уникальный для всех проектов с Gitlab instace
+    # $name Равна либо production либо staging что указано в environment.name
+    # reddit это каталог
     helm upgrade --install \
       --wait \
       --set ui.ingress.host="$host" \
-      --set ui.image.tag="$(curl http://gitlab-gitlab/$CI_PROJECT_NAMESPACE/ui/raw/master/VERSION)" \
-      --set post.image.tag="$(curl http://gitlab-gitlab/$CI_PROJECT_NAMESPACE/post/raw/master/VERSION)" \
-      --set comment.image.tag="$(curl http://gitlab-gitlab/$CI_PROJECT_NAMESPACE/comment/raw/master/VERSION)" \
+      --set ui.image.tag="$(curl https://gitlab.gitlabci.basov.world/$CI_PROJECT_NAMESPACE/ui/-/raw/main/VERSION)" \
+      --set post.image.tag="$(curl https://gitlab.gitlabci.basov.world/$CI_PROJECT_NAMESPACE/post/-/raw/main/VERSION)" \
+      --set comment.image.tag="$(curl https://gitlab.gitlabci.basov.world/$CI_PROJECT_NAMESPACE/comment/-/raw/main/VERSION)" \
       --namespace="$KUBE_NAMESPACE" \
       --version="$CI_PIPELINE_ID-$CI_JOB_ID" \
       "$name" \
@@ -89,17 +89,18 @@ production:
 
   function install_dependencies() {
 
-    apk add -U openssl curl tar gzip bash ca-certificates git
+    apk add -U openssl curl tar gzip bash ca-certificates git python3
     wget -q -O /etc/apk/keys/sgerrand.rsa.pub https://alpine-pkgs.sgerrand.com/sgerrand.rsa.pub
-    wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.23-r3/glibc-2.23-r3.apk
-    apk add glibc-2.23-r3.apk
-    rm glibc-2.23-r3.apk
+    wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.35-r1/glibc-2.35-r1.apk
+    apk add glibc-2.35-r1.apk
+    rm glibc-2.35-r1.apk
 
-    curl https://kubernetes-helm.storage.googleapis.com/helm-v2.7.2-linux-amd64.tar.gz | tar zx
-
-    mv linux-amd64/helm /usr/bin/
+    # Ставим helm последней версии
+    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
+    chmod +x get_helm.sh && ./get_helm.sh
     helm version --client
 
+    # Загружаем и устанавливаем утилиту kubectl - официальный клиент командной строки для управления кластером Kubernetes.
     curl -L -o /usr/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
     chmod +x /usr/bin/kubectl
     kubectl version --client
@@ -107,17 +108,6 @@ production:
 
   function ensure_namespace() {
     kubectl describe namespace "$KUBE_NAMESPACE" || kubectl create namespace "$KUBE_NAMESPACE"
-  }
-
-  function install_tiller() {
-    echo "Checking Tiller..."
-    helm init
-    kubectl rollout status -n "$TILLER_NAMESPACE" -w "deployment/tiller-deploy"
-    if ! helm version --debug; then
-      echo "Failed to init Tiller."
-      return 1
-    fi
-    echo ""
   }
 
   function delete() {

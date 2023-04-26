@@ -56,6 +56,26 @@ test:
   only:
     - branches
 
+review:
+  stage: review
+  script:
+    - install_dependencies
+    - ensure_namespace
+    - deploy
+  variables:
+    KUBE_NAMESPACE: review
+    host: $CI_PROJECT_PATH_SLUG-$CI_COMMIT_REF_SLUG
+  environment:
+    name: review/$CI_PROJECT_PATH/$CI_COMMIT_REF_NAME
+    url: http://$CI_PROJECT_PATH_SLUG-$CI_COMMIT_REF_SLUG
+    on_stop: stop_review
+  only:
+    refs:
+      - branches
+    kubernetes: active
+  except:
+    - main
+
 # В это шаге мы меняем тег докер образа приложения и помещаем его на DockerHub. Только релизные версии для ветки main.
 release:
   stage: release
@@ -72,27 +92,6 @@ release:
   script:
     - release
   only:
-    - main
-
-review:
-  stage: review
-  script:
-    - install_dependencies
-    - ensure_namespace
-    - install_tiller
-    - deploy
-  variables:
-    KUBE_NAMESPACE: review
-    host: $CI_PROJECT_PATH_SLUG-$CI_COMMIT_REF_SLUG
-  environment:
-    name: review/$CI_PROJECT_PATH/$CI_COMMIT_REF_NAME
-    url: http://$CI_PROJECT_PATH_SLUG-$CI_COMMIT_REF_SLUG
-    on_stop: stop_review
-  only:
-    refs:
-      - branches
-    kubernetes: active
-  except:
     - main
 
 stop_review:
@@ -127,97 +126,6 @@ stop_review:
   # $CI_COMMIT_REF_SLUG это имя branch или tag в формате переделанном для URLs, host names and domain names
   export CI_APPLICATION_TAG=$CI_COMMIT_REF_SLUG
   export CI_CONTAINER_NAME=ci_job_build_${CI_JOB_ID}
-  export TILLER_NAMESPACE="kube-system"
-
-  function deploy() {
-    track="${1-stable}"
-    name="$CI_ENVIRONMENT_SLUG"
-
-    if [[ "$track" != "stable" ]]; then
-      name="$name-$track"
-    fi
-
-    echo "Clone deploy repository..."
-    git clone http://gitlab-gitlab/$CI_PROJECT_NAMESPACE/reddit-deploy.git
-
-    echo "Download helm dependencies..."
-    helm dep update reddit-deploy/reddit
-
-    echo "Deploy helm release $name to $KUBE_NAMESPACE"
-    helm upgrade --install \
-      --wait \
-      --set ui.ingress.host="$host" \
-      --set $CI_PROJECT_NAME.image.tag=$CI_APPLICATION_TAG \
-      --namespace="$KUBE_NAMESPACE" \
-      --version="$CI_PIPELINE_ID-$CI_JOB_ID" \
-      "$name" \
-      reddit-deploy/reddit/
-  }
-
-  function install_dependencies() {
-
-    # Ставим зависимости + glibc  
-    apk add -U openssl curl tar gzip bash ca-certificates git
-    wget -q -O /etc/apk/keys/sgerrand.rsa.pub https://alpine-pkgs.sgerrand.com/sgerrand.rsa.pub
-    wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.23-r3/glibc-2.23-r3.apk
-    apk add glibc-2.23-r3.apk
-    rm glibc-2.23-r3.apk
-
-    # ставим gsutil чтобы управлять командами GCP 
-    curl https://storage.googleapis.com/pub/gsutil.tar.gz | tar -xz -C $HOME
-    export PATH=${PATH}:$HOME/gsutil
-    
-    # Ставим helm
-    curl https://kubernetes-helm.storage.googleapis.com/helm-v2.9.1-linux-amd64.tar.gz | tar zx
-
-    mv linux-amd64/helm /usr/bin/
-    helm version --client
-
-    # Эти команды загружают скрипт sync-repo.sh с репозитория GitHub, сохраняют его в /usr/bin/ и устанавливают права на выполнение для всех пользователей. 
-    # Этот скрипт используется для синхронизации локального репозитория Helm с удаленным хранилищем чартов Helm
-    curl  -o /usr/bin/sync-repo.sh https://raw.githubusercontent.com/kubernetes/helm/master/scripts/sync-repo.sh
-    chmod a+x /usr/bin/sync-repo.sh
-
-    # Загружаем и устанавливаем утилиту kubectl - официальный клиент командной строки для управления кластером Kubernetes.
-    curl -L -o /usr/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
-    chmod +x /usr/bin/kubectl
-    kubectl version --client
-  }
-
-  # Эта функция проверяет установлен ли докер. if ! docker info &>/dev/null (Если докер не установлен тогда)
-  # Проверяем определены ли переменные $DOCKER_HOST и $KUBERNETES_PORT Если переменная $DOCKER_HOST не определена и $KUBERNETES_PORT определена, то функция устанавливает $DOCKER_HOST равным tcp://localhost:2375.
-  # Что означает что подключение будет происходить к докер демону установленному на хосте
-  function setup_docker() {
-    if ! docker info &>/dev/null; then
-      if [ -z "$DOCKER_HOST" -a "$KUBERNETES_PORT" ]; then
-        export DOCKER_HOST='tcp://docker:2375'
-      fi
-    fi
-  }
-  
-  # Создаем пространство имен с именем $KUBE_NAMESPACE если оно не существует
-  function ensure_namespace() {
-    kubectl describe namespace "$KUBE_NAMESPACE" || kubectl create namespace "$KUBE_NAMESPACE"
-  }
-
-  # Выпускаем релиз приложения, переименовываем тег на тег из файла VERSION и выкладываем на DockerHub
-  function release() {
-
-    echo "Updating docker images ..."
-    
-    # [[ -n ... ]] проверяется установлена ли переменная
-    if [[ -n "$CI_REGISTRY_USER" ]]; then
-      echo "Logging to GitLab Container Registry with CI credentials..."
-      docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
-      echo ""
-    fi
-
-    docker pull "$CI_APPLICATION_REPOSITORY:$CI_APPLICATION_TAG"
-    # Переименовываем тег в docker.io/ИмяГруппы/ИмяПроекта:ВерсияИзФайлаVERSION
-    docker tag "$CI_APPLICATION_REPOSITORY:$CI_APPLICATION_TAG" "$CI_APPLICATION_REPOSITORY:$(cat VERSION)"
-    docker push "$CI_APPLICATION_REPOSITORY:$(cat VERSION)"
-    echo ""
-  }
 
   function build() {
 
@@ -245,15 +153,100 @@ stop_review:
     echo ""
   }
 
-  # устанавливает Tiller - серверную часть Helm
-  function install_tiller() {
-    echo "Checking Tiller..."
-    helm init --upgrade
-    kubectl rollout status -n "$TILLER_NAMESPACE" -w "deployment/tiller-deploy"
-    if ! helm version --debug; then
-      echo "Failed to init Tiller."
-      return 1
+  function install_dependencies() {
+
+    # Ставим зависимости + glibc  
+    apk add -U openssl curl tar gzip bash ca-certificates git python3
+    wget -q -O /etc/apk/keys/sgerrand.rsa.pub https://alpine-pkgs.sgerrand.com/sgerrand.rsa.pub
+    wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.35-r1/glibc-2.35-r1.apk
+    apk add glibc-2.35-r1.apk
+    rm glibc-2.35-r1.apk
+
+    # ставим gsutil чтобы управлять командами GCP 
+    curl https://storage.googleapis.com/pub/gsutil.tar.gz | tar -xz -C $HOME
+    export PATH=${PATH}:$HOME/gsutil
+    
+    # Ставим helm последней версии
+    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
+    chmod +x get_helm.sh && ./get_helm.sh
+    helm version --client
+
+    # Эти команды загружают скрипт sync-repo.sh с репозитория GitHub, сохраняют его в /usr/bin/ и устанавливают права на выполнение для всех пользователей. 
+    # Этот скрипт используется для синхронизации локального репозитория Helm с удаленным хранилищем чартов Helm
+    curl  -o /usr/bin/sync-repo.sh https://raw.githubusercontent.com/kubernetes/helm/master/scripts/sync-repo.sh
+    chmod a+x /usr/bin/sync-repo.sh
+
+    # Загружаем и устанавливаем утилиту kubectl - официальный клиент командной строки для управления кластером Kubernetes.
+    curl -L -o /usr/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
+    chmod +x /usr/bin/kubectl
+    kubectl version --client
+  }
+
+  # Создаем пространство имен с именем $KUBE_NAMESPACE если оно не существует
+  function ensure_namespace() {
+    kubectl describe namespace "$KUBE_NAMESPACE" || kubectl create namespace "$KUBE_NAMESPACE"
+  }
+
+  function deploy() {
+    # Если вызываем функцию с аргументом то переменная track будет равна этому первому аргументу если аргумента нет то будет равна stable
+    track="${1-stable}"
+    # Переменная окружения $CI_ENVIRONMENT_SLUG равна тому что указано в environment.name т.е. равна review/ИмяГруппы/ИмяПроекта/branch or tag name
+    name="$CI_ENVIRONMENT_SLUG"
+
+    #  Если track не равно stable тогда name = $name-$track
+    if [[ "$track" != "stable" ]]; then
+      name="$name-$track"
     fi
+
+    # $CI_PROJECT_NAMESPACE - username or group name of the job
+    echo "Clone deploy repository..."
+    git clone https://gitlab.gitlabci.basov.world/$CI_PROJECT_NAMESPACE/reddit-deploy.git
+
+    echo "Download helm dependencies..."
+    helm dep update reddit-deploy/reddit
+
+    # $KUBE_NAMESPACE Задается выше в блоке variables.KUBE_NAMESPACE
+    # Этот ID $CI_PIPELINE_ID уникальный для всех проектов с Gitlab instace
+    # reddit-deploy/reddit/ это каталог
+    echo "Deploy helm release $name to $KUBE_NAMESPACE"
+    helm upgrade --install \
+      --wait \
+      --set ui.ingress.host="$host" \
+      --set $CI_PROJECT_NAME.image.tag=$CI_APPLICATION_TAG \
+      --namespace="$KUBE_NAMESPACE" \
+      --version="$CI_PIPELINE_ID-$CI_JOB_ID" \
+      "$name" \
+      reddit-deploy/reddit/
+  }
+
+  # Эта функция проверяет установлен ли докер. if ! docker info &>/dev/null (Если докер не установлен тогда)
+  # Проверяем определены ли переменные $DOCKER_HOST и $KUBERNETES_PORT Если переменная $DOCKER_HOST не определена и $KUBERNETES_PORT определена, то функция устанавливает $DOCKER_HOST равным tcp://localhost:2375.
+  # Что означает что подключение будет происходить к докер демону установленному на хосте
+  function setup_docker() {
+    if ! docker info &>/dev/null; then
+      if [ -z "$DOCKER_HOST" -a "$KUBERNETES_PORT" ]; then
+        export DOCKER_HOST='tcp://docker:2375'
+      fi
+    fi
+  }
+  
+
+  # Выпускаем релиз приложения, переименовываем тег на тег из файла VERSION и выкладываем на DockerHub
+  function release() {
+
+    echo "Updating docker images ..."
+    
+    # [[ -n ... ]] проверяется установлена ли переменная
+    if [[ -n "$CI_REGISTRY_USER" ]]; then
+      echo "Logging to GitLab Container Registry with CI credentials..."
+      docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
+      echo ""
+    fi
+
+    docker pull "$CI_APPLICATION_REPOSITORY:$CI_APPLICATION_TAG"
+    # Переименовываем тег в docker.io/ИмяГруппы/ИмяПроекта:ВерсияИзФайлаVERSION
+    docker tag "$CI_APPLICATION_REPOSITORY:$CI_APPLICATION_TAG" "$CI_APPLICATION_REPOSITORY:$(cat VERSION)"
+    docker push "$CI_APPLICATION_REPOSITORY:$(cat VERSION)"
     echo ""
   }
 

@@ -60,7 +60,7 @@ resource "google_container_node_pool" "primary_nodes" {
 
   node_config {
     machine_type = "n2-standard-2"
-    disk_size_gb = 60
+    disk_size_gb = 40
     # oauth_scopes - это список OAuth-областей видимости, которые необходимо предоставить сервисному аккаунту. 
     # В данном случае, указана область видимости https://www.googleapis.com/auth/cloud-platform, которая предоставляет доступ к ресурсам Google Cloud Platform.
     oauth_scopes = [
@@ -71,7 +71,7 @@ resource "google_container_node_pool" "primary_nodes" {
 
 # Добавляем в  Cloud DNS зону basov-world запись для нашего Gitlab сервера.
 resource "google_dns_record_set" "gitlab_basov_world" {
-  name        = "*.gitlabci.basov.world."
+  name        = "*.gitlab.basov.world."
   type        = "A"
   ttl         = 300
   managed_zone = "basov-world"
@@ -83,7 +83,11 @@ resource "null_resource" "get-credentials" {
 
   depends_on = [google_container_cluster.dev-cluster]  
   provisioner "local-exec" {
-    command = "gcloud container clusters get-credentials ${google_container_cluster.dev-cluster.name} --zone ${var.zone} --project ${var.project} && kubectl apply -f gitlab-namespace.yml"
+    command = <<-EOT
+              gcloud container clusters get-credentials ${google_container_cluster.dev-cluster.name} --zone ${var.zone} --project ${var.project}
+              helm upgrade --install ingress-nginx ingress-nginx --repo https://kubernetes.github.io/ingress-nginx --namespace ingress-nginx --create-namespace --set controller.service.loadBalancerIP=${google_compute_address.gitlab_ip.address} --set tcp.22="gitlab/gitlab-gitlab-shell:22"
+              helm upgrade --install gitlab gitlab/gitlab --timeout 600s --set global.hosts.domain=gitlab.basov.world --set global.hosts.externalIP=${google_compute_address.gitlab_ip.address} --set certmanager-issuer.email=baggurd@mail.ru --set global.edition=ce --set gitlab-runner.runners.privileged=true --set global.kas.enabled=true --set global.ingress.class=nginx --set nginx-ingress.enabled=false --create-namespace -n gitlab
+    EOT 
   }
 }
 

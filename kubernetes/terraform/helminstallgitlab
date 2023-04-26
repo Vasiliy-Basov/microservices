@@ -8,23 +8,162 @@ helm repo update
 https://docs.gitlab.com/charts/installation/command-line-options.html - опции
 
 helm upgrade --install gitlab gitlab/gitlab --timeout 600s \
-  --set global.hosts.domain=gitlabci.basov.world \
-  --set global.hosts.externalIP=34.136.72.77 \
+  --set global.hosts.domain=gitlab.basov.world \
+  --set global.hosts.externalIP=35.192.162.100 \
   --set certmanager-issuer.email=baggurd@mail.ru \
   --set global.edition=ce \
   --set gitlab-runner.runners.privileged=true \
+  --set global.kas.enabled=true \
+  --set global.ingress.class=nginx \
+  --set nginx-ingress.enabled=false \
+  --create-namespace \
   -n gitlab
 
 Получаем пароль
 kubectl get secrets -n gitlab | grep init
 kubectl get secret gitlab-gitlab-initial-root-password -ojsonpath='{.data.password}' -n gitlab | base64 --decode ; echo
-IAbJDbuN1SzS2iUBeSufV5dGca2YkZcxyLhHXCekPHG5MtDTdIZGaQgAeDPB9cv1
 
 kubectl get pods -n gitlab -w
 
 kubectl get ingress -n gitlab
+kubectl get svc -n gitlab
+kubectl get deploy -n gitlab
 
 Просмотреть проблемы с сертификатами GITLAB
 kubectl describe certificate,order,challenge --all-namespaces
 
 Let's Encrypt т.е. настройка certmanager-issuer.email=baggurd@mail.ru позволяет создать только 5 сертификатов в течении 7 суток.
+
+Токен мы получаем когда заходим в project - Infrastructure Kubernetes clusters = connect a cluster
+Tokent agent
+2aot7epeHh6ex-Y2Xxy1rLp6mPQxy66tGTAB-6oqjLMwAje-Mg
+
+
+helm upgrade --install primary-agent gitlab/gitlab-agent \
+    --set image.tag=v15.9.0 \
+    --set config.token=3KEczovDUMBU9a8sxNZ9hh3_Fp8R_Y1pP48dZy2smdJkTDGECQ \
+    --set config.kasAddress=wss://kas.gitlab.basov.world \
+    --namespace gitlab
+
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ template "ui.fullname" . }}
+  annotations:
+    kubernetes.io/ingress.class: {{ .Values.ingress.class }}
+spec:
+  rules:
+  - host: {{ .Values.ingress.host | default .Release.Name }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ template "ui.fullname" . }}
+            port:
+              number: {{ .Values.service.externalPort }}
+
+stages:
+  - review
+
+review:
+  stage: review
+  script:
+    - install_dependencies
+    - kubectl config get-contexts
+    - kubectl config use-context vasiliybasov/ui:primary-agent
+    - kubectl get pods
+    - ensure_namespace
+    - deploy
+  variables:
+    KUBE_NAMESPACE: review
+    host: $CI_PROJECT_PATH_SLUG-$CI_COMMIT_REF_SLUG
+  environment:
+    name: review/$CI_PROJECT_PATH/$CI_COMMIT_REF_NAME
+    url: http://$CI_PROJECT_PATH_SLUG-$CI_COMMIT_REF_SLUG
+  only:
+    refs:
+      - branches
+  except:
+    - main
+
+.auto_devops: &auto_devops |
+  [[ "$TRACE" ]] && set -x
+  export CI_REGISTRY="docker.io"
+  export CI_APPLICATION_REPOSITORY=$CI_REGISTRY/$CI_PROJECT_PATH
+  export CI_APPLICATION_TAG=$CI_COMMIT_REF_SLUG
+  export CI_CONTAINER_NAME=ci_job_build_${CI_JOB_ID}
+
+  function install_dependencies() {
+
+    apk add -U openssl curl tar gzip bash ca-certificates git python3
+    wget -q -O /etc/apk/keys/sgerrand.rsa.pub https://alpine-pkgs.sgerrand.com/sgerrand.rsa.pub
+    wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.35-r1/glibc-2.35-r1.apk
+    apk add glibc-2.35-r1.apk
+    rm glibc-2.35-r1.apk
+
+    curl https://storage.googleapis.com/pub/gsutil.tar.gz | tar -xz -C $HOME
+    export PATH=${PATH}:$HOME/gsutil
+    
+    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
+    chmod +x get_helm.sh && ./get_helm.sh
+    helm version --client
+
+    curl  -o /usr/bin/sync-repo.sh https://raw.githubusercontent.com/kubernetes/helm/master/scripts/sync-repo.sh
+    chmod a+x /usr/bin/sync-repo.sh
+
+    curl -L -o /usr/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
+    chmod +x /usr/bin/kubectl
+    kubectl version --client
+  }
+
+  function ensure_namespace() {
+    kubectl describe namespace "$KUBE_NAMESPACE" || kubectl create namespace "$KUBE_NAMESPACE"
+  }
+
+  function deploy() {
+    track="${1-stable}"
+    name="$CI_ENVIRONMENT_SLUG"
+
+    if [[ "$track" != "stable" ]]; then
+      name="$name-$track"
+    fi
+
+    echo "Clone deploy repository..."
+    git clone https://gitlab.gitlab.basov.world/$CI_PROJECT_NAMESPACE/reddit-deploy.git
+
+    echo "Download helm dependencies..."
+    helm dep update reddit-deploy/reddit
+
+    echo "Deploy helm release $name to $KUBE_NAMESPACE"
+    echo "$host"
+    helm upgrade --install \
+      --wait \
+      --set ui.ingress.host="$host" \
+      --set $CI_PROJECT_NAME.image.tag=$CI_APPLICATION_TAG \
+      --namespace="$KUBE_NAMESPACE" \
+      --version="$CI_PIPELINE_ID-$CI_JOB_ID" \
+      "$name" \
+      reddit-deploy/reddit/
+  }
+
+default:
+  interruptible: false
+  image: alpine:latest
+  before_script:
+    - *auto_devops
+
+
+helm upgrade --install --wait --create-namespace --namespace reddittest reddit reddit/
+
+helm uninstall --namespace reddittest reddit
+
+Обновление зависимостей чарта
+helm dep update ./reddit
+
+Удаление установлкного манифеста
+kubectl delete -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.7.0/deploy/static/provider/cloud/deploy.yaml
+

@@ -8,6 +8,9 @@
 		},
 		{
 			"path": "../gitlab/example"
+		},
+		{
+			"path": "../gitlab_ci"
 		}
 	],
 	"settings": {

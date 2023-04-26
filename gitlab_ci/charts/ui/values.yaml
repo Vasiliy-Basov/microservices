@@ -7,10 +7,6 @@ image:
   repository: vasiliybasov/ui
   tag: latest
 
-ingress:
-  class: nginx
-  # host: "{{ .Release.Name }}.gitlab.basov.world"
-
 postHost:
 postPort:
 commentHost:

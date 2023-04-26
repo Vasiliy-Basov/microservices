@@ -10,7 +10,8 @@ metadata:
     # Подключаем статический ip который мы создали ранее:
     # kubernetes.io/ingress.global-static-ip-name: dev-cluster-gitlab
     # If the class annotation is not specified it defaults to "gce".
-    # kubernetes.io/ingress.class: {{ .Values.ingress.class }}
+    # Выбираем каким ingress пользоваться если их стоит несколько
+    # kubernetes.io/ingress.class: "nginx"
     # # Перенаправляет все http запросы на https, также требует, чтобы на сервере был установлен SSL-сертификат и ключ, даже если само соединение использует HTTP-протокол. Если сервер не настроен с SSL-сертификатом и ключом, то запросы будут отвергнуты с ошибкой.    
     # nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     # nginx.ingress.kubernetes.io/ssl-redirect: "true"
@@ -21,10 +22,7 @@ spec:
   # - secretName: ui-ingress
   # здесь мы определяем правила маршрутизации для входящих запросов.
   rules:
-  # Указываем hostname. Когда приходит запрос на сервер, он содержит имя хоста (или IP-адрес), к которому он адресован. Ingress использует это имя хоста для определения, какому сервису следует маршрутизировать запрос.
-  # Если же запрос адресован другому хосту, то он не будет соответствовать этому Ingress правилу и, следовательно, не будет маршрутизироваться на этот сервис.
-  # .Release.Name это имя релиза которое мы устанавливаем (или оно назначается автоматически если мы его не указываем) когда запускаем команду helm install
-  - host: {{ .Values.ingress.host | default .Release.Name }}
+  - host: vasiliybasov.gitlab.basov.world
   # мы указываем, что будем маршрутизировать запросы по HTTP протоколу.
     http:
       # здесь мы определяем пути, которые будут маршрутизироваться.
@@ -43,4 +41,4 @@ spec:
             # Порт на который будет посылаться трафик на сервис NodePort (прописан в ui-service.yml)
             port:
               number: {{ .Values.service.externalPort }}
-  ingressClassName: {{ .Values.ingress.class }}
+  ingressClassName: nginx
