@@ -1,4 +1,5 @@
 ---
+# Политика для ограничения трафика к базе данных, т.е. к сервису mongodb-service.yml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

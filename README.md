@@ -1,44 +1,80 @@
-HW#14 (docker-1)
+# **14 Docker-1**
 В данной работе мы:
 
-установили docker, docker-compose, docker-machine;
+установили **docker, docker-compose, docker-machine;**
 рассмотрели жизненные цикл контейнера на примере hello-world и nginx;
 рассмотрели отличия image и container.
 Полезные команды:
-$ docker info - информация о dockerd (включая количество containers, images и т.п.). $ docker version $ docker images - список всех images. $ docker ps - список запущенных на текущий момент контейнеров. $ docker ps -a - список всех контейнеров, в т.ч. остановленных. $ docker system df - информация о дисковом пространстве (контейнеры, образы и т.д.). $ docker inspect - подробная информация об объекте docker.
+- docker info - информация о dockerd (включая количество containers, images и т.п.).
+- docker version
+- docker images - список всех images. 
+- docker ps - список запущенных на текущий момент контейнеров.
+- docker ps -a - список всех контейнеров, в т.ч. остановленных.
+- docker system df - информация о дисковом пространстве (контейнеры, образы и т.д.).
+- docker inspect - подробная информация об объекте docker.
+- docker run hello-world - запуск контейнера hello-world. Может служить тестом на проверку работоспособности docker.
+- docker run -it ubuntu:16.04 /bin/bash - пример того, как можно создать и запустить контейнер с последующим переходом в терминал. 
+  - -i - запуск контейнера в foreground-режиме (docker attach). 
+  - -d - запуск контейнера в background-режиме. 
+  - -t - создание TTY. 
 
-$ docker run hello-world - запуск контейнера hello-world. Может служить тестом на проверку работоспособности docker. $ docker run -it ubuntu:16.04 /bin/bash - пример того, как можно создать и запустить контейнер с последующим переходом в терминал. -i - запуск контейнера в foreground-режиме (docker attach). -d - запуск контейнера в background-режиме. -t - создание TTY. Пример:
-
+Пример:
+```bash
 docker run -it ubuntu:16.04 bash
-docker run -dt nginx:latest Важные моменты:
-если не указывать флаг --rm, то после остановки контейнер останется на диске;
-docker run каждый раз запускает новый контейнер;
-docker run = docker create + docker start;
-$ docker start <u_container_id> - запуск остановленного контейнера. $ docker attach <u_container_id> - подключение к терминалу уже созданного контейнера.
+```
+```bash
+docker run -dt nginx:latest 
+```
 
-$ docker exec <u_container_id> - запуск нового процесса внутри контейнера. Пример: docker exec -it <u_container_id> bash
+Важные моменты: если не указывать флаг --rm, то после остановки контейнер останется на диске;
+```bash
+docker run # каждый раз запускает новый контейнер;
+# docker run = docker create + docker start;
+docker start <u_container_id> # запуск остановленного контейнера.
+docker attach <u_container_id> # подключение к терминалу уже созданного контейнера.
+docker exec <u_container_id> # запуск нового процесса внутри контейнера. 
+```
+Пример: 
 
-$ docker commit <u_container_id> - создание image из контейнера.
+```bash
+docker exec -it <u_container_id> bash
+```
+```bash
+docker commit <u_container_id> # создание image из контейнера.
+docker kill <u_container_id> # отправка SIGKILL. 
+docker stop <u_container_id> # отправка SIGTERM, затем (через 10 секунд) SIGKILL.
+```
+Пример: уничтожение всех запущенных контейнеров.
+```
+docker kill $(docker ps -q)
+```
+```bash
+- docker rm <u_container_id> # удаление контейнера (должен быть остановлен). -f позволяет удалить работающий контейнер (предварительно посылается SIGKILL). 
+```
+Пример:  удаление всех незапущенных контейнеров.
+```bash
+docker rm $(docker ps -a -q)
+```
+удаление image, если от него не зависят запущенные контейнеры.
+```bash
+docker rmi
+```
 
-$ docker kill <u_container_id> - отправка SIGKILL. $ docker stop <u_container_id> - отправка SIGTERM, затем (через 10 секунд) SIGKILL. Пример: docker kill $(docker ps -q) - уничтожение всех запущенных контейнеров.
-
-$ docker rm <u_container_id> - удаление контейнер (должен быть остановлен). -f - позволяет удалить работающий контейнер (предварительно посылается SIGKILL). Пример: $ docker rm $(docker ps -a -q) - удаление всех незапущенных контейнеров.
-
-$ docker rmi - удаление image, если от него не зависят запущенные контейнеры.
-
-## HW#15 (docker-2)
+# **15 Docker-2**
 В данной работе мы:
 * создали docker host;
 * описали Dockerfile;
 * опубликовали Dockerfile на Docker Hub;
 * подготовили прототип автоматизации деплоя приложения в связке Packer + Ansible Terraform.
 
-### Docker machine
-docker-machine - встроенный в докер инструмент для создания хостов и установки на них docker engine. Имеет поддержку облаков и систем виртуализации (Virtualbox, GCP и др.) 
-Все докер команды, которые запускаются в той же консоли после eval $(docker-machine env <имя>) работают с удаленным докер демоном в GCP 
-Latest docker release (20.10.0) doesn't work with docker-machine 
-Поэтому мы должны брать конкретный образ и конкретную версию docker также нужно использовать поледнюю версию docker-machine  
-Releases · docker/machine (github.com) 
+## **Docker machine**
+- **docker-machine** - встроенный в докер инструмент для создания хостов и установки на них docker engine. Имеет поддержку облаков и систем виртуализации (Virtualbox, GCP и др.) 
+- Все докер команды, которые запускаются в той же консоли после
+**eval $(docker-machine env <имя>)** работают с удаленным докер демоном в GCP
+- **Latest docker release (20.10.0) doesn't work with docker-machine**
+- Поэтому мы должны брать конкретный образ и конкретную версию docker также нужно использовать поледнюю версию docker-machine  
+- Releases · docker/machine (github.com) 
+
 Создание хоста с docker в GCP при помощи docker-machine:
 ```bash
 $ docker-machine create --driver google --google-project docker-372311 --google-machine-image https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/ubuntu-1604-xenial-v20170815a --google-machine-type n1-standard-1 --google-zone europe-west1-b --engine-install-url "https://releases.rancher.com/install-docker/19.03.9.sh" docker-host
@@ -62,7 +98,7 @@ eval $(docker-machine env --unset)
 docker-machine rm <имя>
 ```
 
-### Подготовка Dockerfile
+## **Подготовка Dockerfile**
 Для полного описания контейнера нам потребуются следующие файлы:
 * Dockerfile
 * mongod.conf
@@ -109,7 +145,7 @@ sudo docker images -a
 sudo docker run --name reddit -d --network=host reddit:latest 
 ```
 Проверим результат: 
-Список машин: 
+- Список машин: 
 ```bash
 docker-machine ls 
 ```
@@ -124,7 +160,7 @@ gcloud compute firewall-rules create reddit-app --allow tcp:9292 --target-tags=d
 Проверим что приложение работает 
 http://34.78.65.110:9292
 
-### Docker hub
+## **Docker hub**
 Аутентифицируемся на docker hub для продолжения работы: 
 ```bash
 docker login 
@@ -135,10 +171,10 @@ docker tag reddit:latest vasiliybasov/otus-reddit:1.0
 docker push vasiliybasov/otus-reddit:1.0 
 ```
 
-### Полезные команды
+### **Полезные команды**
 Проверка, с какой командой будет запущен контейнер:
 ```bash
-$ docker inspect weisdd/otus-reddit:1.0 -f '{{.ContainerConfig.Cmd}}'
+$ docker inspect vasiliybasov/otus-reddit:1.0 -f '{{.ContainerConfig.Cmd}}'
 ```
 Список изменений в ФС с момента запуска контейнера:
 ```bash
@@ -152,45 +188,47 @@ $ docker diff reddit
 ```bash
 docker run --name reddit -d -p 9292:9292 vasiliybasov/otus-reddit:1.0 
 ```
-d – detached mode В таком случае можно будет спокойно закрыть терминал, а контейнер продолжит работу 
+- d – detached mode В таком случае можно будет спокойно закрыть терминал, а контейнер продолжит работу 
 -p, --publish list          Publish a container's port(s) to the host 
 
 проверим что приложение работает 
 http://127.0.0.1:9292 
 
-### Задание со * 
+## **Задание со \*** 
+
 Задание:
-Теперь, когда есть готовый образ с приложением, можно автоматизировать поднятие нескольких инстансов в GCP, установку на них докера и запуск там образа <your-login>/otus-reddit:1.0 Нужно реализовать в виде прототипа в директории /docker-monolith/infra/
+Теперь, когда есть готовый образ с приложением, можно автоматизировать поднятие нескольких инстансов в GCP, установку на них докера и запуск там образа vasiliybasov/otus-reddit:1.0 Нужно реализовать в виде прототипа в директории /docker-monolith/infra/
 * Поднятие инстансов с помощью Terraform, их количество задается переменной;
 * Несколько плейбуков Ansible с использованием динамического инвентори для установки докера и запуска там образа приложения;
 * Шаблон пакера, который делает образ с уже установленным Docker.
 
-C помощью packer делаем образ с уже установленным docker
+- C помощью packer делаем образ с уже установленным docker
 packer validate -var-file=packer/variables.json packer/docker_host.json
 packer build -var-file=packer/variables.json packer/docker_host.json
 
-/microservices/docker-monolith/infra/packer/docker_host.json 
+/microservices/docker-monolith/infra/packer/docker_host.json <br/>
 /microservices/docker-monolith/infra/packer/variables.json 
 
 Error при building в ubuntu 22.04
+```bash
 googlecompute: TASK [Gathering Facts] ********************************************************* 
 
 ==> googlecompute: failed to handshake 
 
     googlecompute: fatal: [default]: UNREACHABLE! => {"changed": false, "msg": "Failed to connect to the host via ssh: Unable to negotiate with 127.0.0.1 port 40011: no matching host key type found. Their offer: ssh-rsa", "unreachable": true} 
-
+```
  
 
 Решение: 
 
-https://github.com/vmware-samples/packer-examples-for-vsphere/discussions/234?sort=new 
-you may be required to update your /etc/ssh/ssh_config or .ssh/ssh_config to allow authentication with RSA keys if you are using VMware Photon OS 4.0 or Ubuntu 22.04. 
+https://github.com/vmware-samples/packer-examples-for-vsphere/discussions/234?sort=new <br/>
+You may be required to update your /etc/ssh/ssh_config or .ssh/ssh_config to allow authentication with RSA keys if you are using VMware Photon OS 4.0 or Ubuntu 22.04. 
 Update to include the following: 
 
-PubkeyAcceptedAlgorithms ssh-rsa 
+PubkeyAcceptedAlgorithms ssh-rsa <br/>
 HostkeyAlgorithms ssh-rsa 
 
-После создания образа нужно закоментировать эти строки потому что могут быть проблемы в будущем для ssh соединений. Например не работают id_ecdsa ssh ключи
+После создания образа нужно закомментировать эти строки потому что могут быть проблемы в будущем для ssh соединений. Например не работают id_ecdsa ssh ключи
 
 Создаём instance с этим образом:
 ```bash
@@ -204,7 +242,7 @@ infra/ansible$ ansible-playbook playbooks/otus_reddit.yml
 Теперь приложение доступно по адресу:
 x.x.x.x:9292
 
-## HW#16 (docker-3)
+# **16 docker-3**
 В данной работе мы:
 * научились описывать и собирать Docker-образы для сервисного приложения;
 * научились оптимизировать работу с Docker-образами;
@@ -213,22 +251,19 @@ x.x.x.x:9292
 * переопределили ENV через docker run;
 * оптимизировали размер контейнера (образ на базе Alpine).
 
-Работа велась в каталоге src, где под каждый сервис существует отдельная директория (comment, post-py, ui). Для MongoDB использовался образ из Docker Hub.
+Работа велась в каталоге src, где под каждый сервис существует отдельная директория **(comment, post-py, ui)**. Для MongoDB использовался образ из Docker Hub.
 
-Разбить наше приложение на несколько компонентов 
+Разбить наше приложение на несколько компонентов <br/>
 Запустить наше микросервисное приложение 
 
 Линтер 
 ```
 https://github.com/hadolint/hadolint 
 ```
- 
-
 Установка 
 ```bash
 wget -O /bin/hadolint https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64 
 ```
- 
 
 Обновляем сертификаты если сменился ip 
 ```bash
@@ -241,14 +276,16 @@ docker-machine ls
 eval $(docker-machine env docker-host) 
 ```
 Теперь наше приложение состоит из трех компонентов: 
-post-py - сервис отвечающий за написание постов 
-comment - сервис отвечающий за написание комментариев 
-ui - веб-интерфейс, работающий с другими сервисами 
-Для работы нашего приложения также требуется база данных MongoDB 
+- **post-py** - сервис отвечающий за написание постов 
+- **comment** - сервис отвечающий за написание комментариев 
+- **ui** - веб-интерфейс, работающий с другими сервисами 
+
+Для работы нашего приложения также требуется база данных MongoDB <br/>
 Создаем в каждом каталоге три Dockerfile: 
 
 В соответствии с рекомендациями hadolint было внесены изменения:
-### ui/Dockerfile
+## ui/Dockerfile
+```
 RUN apt-get update -qq && apt-get install -y build-essential
 =>
 RUN apt-get update -qq && apt-get install -y build-essential --no-install-recommends \
@@ -261,8 +298,9 @@ COPY Gemfile* $APP_HOME/
 ADD . $APP_HOME
 =>
 COPY . $APP_HOME
-
-### comment/Dockerfile
+```
+## comment/Dockerfile
+```
 RUN apt-get update -qq && apt-get install -y build-essential
 =>
 RUN apt-get update -qq && apt-get install -y build-essential --no-install-recommends \
@@ -276,11 +314,11 @@ ADD . $APP_HOME
 =>
 COPY . $APP_HOME
 
-### post-py/Dockerfile
+## post-py/Dockerfile
 ADD . /app
 =>
 COPY . /app
-
+```
 В Dockerfile со слайдов было обнаружено ряд проблем:
 1. image для post-py не собирался, т.к. отсутствовал build-base. Обновлённый dockerfile выглядит следующим образом:
 
@@ -310,9 +348,8 @@ W: Failed to fetch http://deb.debian.org/debian/dists/jessie-updates/InRelease  
 E: Some index files failed to download. They have been ignored, or old ones used instead.
 ```
 Поэтому пришлось использовать другую версию контейнера:
-FROM ruby:2.2
-=>
-FROM ruby:2.3
+<br/>
+FROM ruby:2.2 => FROM ruby:2.3
 
 После этого все образы успешно собрались:
 
@@ -320,7 +357,7 @@ FROM ruby:2.3
 ```bash
 docker pull mongo:4.0-xenial 
 ```
-Соберем образы с нашими сервисами: 
+Соберем образы с нашими сервисами: <br/>
 В файл requirments нужно добавить markupsafe==1.1.1 
 ```bash
 docker build -t vasiliybasov/post:1.0 ./post-py 
@@ -336,26 +373,28 @@ docker network create reddit
 ```
 Запустим наши контейнеры: 
 
---network-alias в команде docker build используется для назначения container's hostname внутри пользовательской сети. Например, если вы запускаете команду docker build --network-alias myalias . в папке, где находится ваш Dockerfile, это создаст образ и запустит контейнер с хостнеймом "myalias" в указанной вами сети. 
+- **--network-alias** в команде docker build используется для назначения container's hostname внутри пользовательской сети. Например, если вы запускаете команду 
+```bash 
+docker build --network-alias myalias . 
+```
+в папке, где находится ваш Dockerfile, это создаст образ и запустит контейнер с hostname "myalias" в указанной вами сети.
 
 Когда вы запускаете контейнер с этой опцией, он будет доступен для других контейнеров в той же сети с использованием указанного псевдонима. 
 
-Опция --network-alias полезна, когда вы хотите подключить несколько контейнеров вместе и хотите, чтобы они могли общаться между собой с использованием хостнейма, а не IP-адресов. 
+Опция **--network-alias** полезна, когда вы хотите подключить несколько контейнеров вместе и хотите, чтобы они могли общаться между собой с использованием хостнейма, а не IP-адресов. 
 
-Важно понимать, что опция --network-alias относится только к хостнейму внутри пользовательской сети (reddit в нашем случае) 
+Важно понимать, что опция --network-alias относится только к hostname внутри пользовательской сети (reddit в нашем случае)
 ```bash
 docker run -d --network=reddit --network-alias=post_db --network-alias=comment_db mongo:4.0-xenial 
 docker run -d --network=reddit --network-alias=post vasiliybasov/post:1.0 
 docker run -d --network=reddit --network-alias=comment vasiliybasov/comment:1.0 
 docker run -d --network=reddit -p 9292:9292 vasiliybasov/ui:1.0 
 ```
-
 Чтобы зайти внурь контейнера alpine
 ```bash
 docker exec -it <container_name_or_id> sh 
 ```
-
-Ошибки (Errors) 
+Ошибки (Errors)
 
 Смотрим ошибки в контейнерах 
 ```bash
@@ -365,10 +404,10 @@ docker logs <id container>
 ```bash
 docker pull mongo:4.0-xenial 
 ```
-В файл requirments.txt post нужно добавить markupsafe==1.1.1 
+В файл requirements.txt post нужно добавить markupsafe==1.1.1 
 
 
-Задание со * (стр. 15) 
+## **Задание со \***
 
 Задание: Остановите контейнеры: docker kill $(docker ps -q) Запустите контейнеры с другими сетевыми алиасами. Адреса для взаимодействия контейнеров задаются через ENV-переменные внутри Dockerfile'ов. При запуске контейнеров (docker run) задайте им переменные окружения соответствующие новым сетевым алиасам, не пересоздавая образ. Проверьте работоспособность сервиса 
 
@@ -379,7 +418,7 @@ docker run -d --network=reddit --network-alias=post2 -e POST_DATABASE_HOST=post_
 docker run -d --network=reddit --network-alias=comment2 -e COMMENT_DATABASE_HOST=comment_db2 vasiliybasov/comment:1.0 
 docker run -d --network=reddit -p 9292:9292 -e POST_SERVICE_HOST=post2 -e COMMENT_SERVICE_HOST=comment2 vasiliybasov/ui:1.0 
 ```
-### Работа с образами
+## **Работа с образами**
 Уменьшаем размер образа с помощью пересборки и установки из ubuntu16 и самостоятельно устанавливаем ruby  
 После внесения изменений в Dockerfile и пересборки образа:
 ```dockerfile
@@ -469,22 +508,19 @@ CMD ["puma"]
 
 Comment уменьшаем соответствующим образом. См Dockerfile.1 Dockerfile
 
-Volume 
-
+## **Volume**
 Если перезапустить контейнеры то все данные базы данных пропадут. Что бы данные сохранялись нужно использовать volume  
 Создаем volume 
 ```bash
 docker volume create reddit_db 
 ```
- 
 
-И подключим его к контейнеру с MongoDB... 
-Команда -v reddit_db:/data/db 
+И подключим его к контейнеру с MongoDB... <br/>
+Команда -v reddit_db:/data/db <br/>
 Выключим старые копии контейнеров: 
 ```bash
 docker kill $(docker ps -q) 
 ```
- 
 Запускаем 
 ```bash
 docker run -d --network=reddit --network-alias=post_db --network-alias=comment_db -v reddit_db:/data/db mongo:4.0-xenial 
@@ -499,75 +535,55 @@ docker restart $(docker ps -q)
 ```
 
 
-Docker-4 
+# **Docker-4** 
 
-•Работа с сетями в Docker 
-
-•Использование docker-compose 
-
- 
+- Работа с сетями в Docker 
+- Использование docker-compose 
 
 Разобраться с работой сети в Docker 
 
-•none 
+- none 
+- host 
+- bridge  
 
-•host 
-
-•bridge 
-
- 
-
-None 
+## **None**
 
 Запустим контейнер с использованием none-драйвера. 
-
-docker run -ti --rm --network none joffotron/docker-net-tools -c ifconfig – запускается контейнер выполняется команда ifconfig и удаляется 
+```bash
+docker run -ti --rm --network none joffotron/docker-net-tools -c ifconfig 
+```
+– запускается контейнер выполняется команда ifconfig и удаляется 
 
 В результате, видим: 
 
-•что внутри контейнера из сетевых интерфейсов 
+- что внутри контейнера из сетевых интерфейсов существует только loopback. 
+- сетевой стек самого контейнера работает (ping localhost), но без возможности контактировать с внешним миром. 
+- Значит, можно даже запускать сетевые сервисы внутри такого контейнера, но лишь для локальных экспериментов (тестирование, контейнеры для выполнения разовых задач и т.д.)
 
-существует только loopback. 
-
-•сетевой стек самого контейнера работает (ping localhost), 
-
-но без возможности контактировать с внешним миром. 
-
-•Значит, можно даже запускать сетевые сервисы внутри 
-
-такого контейнера, но лишь для локальных 
-
-экспериментов (тестирование, контейнеры для 
-
-выполнения разовых задач и т.д.) 
-
- 
-
-Host network driver 
-
+## **Host network driver** 
+```bash
 docker run -ti --rm --network host joffotron/docker-net-tools -c ifconfig 
-
+```
+```bash
 docker-machine ssh docker-host ifconfig 
-
-выводы этих команд одинаковые и В данном случае будет использоваться namespace хоста. 
+```
+Выводы этих команд одинаковые и в данном случае будет использоваться namespace хоста. 
 
  
 
 Если выполнить команду  
-
+```bash
 docker run --network host -d nginx 
-
-Несколько раз в итогк запущенным окажется только первый контейнер поскольку каждый последующий пытался использовать уже занятый порт: 
-
-docker  ps –a смотрим контейнеры 
-
-Смотрим лог незапущеных контейнеров и видим что порт уже занят: 
-
+```
+Несколько раз в итоге запущенным окажется только первый контейнер поскольку каждый последующий пытался использовать уже занятый порт: 
+```bash
+docker ps –a #смотрим контейнеры 
+```
+```bash
+# Смотрим лог незапущенных контейнеров и видим что порт уже занят: 
 docker logs bb955418d4b9 
-
- 
-
-network namespaces 
+```
+## **Network namespaces**
 
 Именованные пространства сети (network namespaces) - это механизм в Linux, который позволяет создавать и использовать несколько изолированных окружений сети на одной машине. Каждое именованное пространство сети имеет собственные сетевые интерфейсы, таблицы маршрутизации и другие сетевые настройки, независимые от других именованных пространств сети на той же машине. 
 
@@ -619,7 +635,7 @@ docker run -d --network=reddit -p 9292:9292 -e POST_SERVICE_HOST=post2 -e COMMEN
 
 --network-alias <alias-name> (можно задать множество алиасов) 
 
-Запускаеим 
+Запускаем 
 
 docker run -d --network=reddit --network-alias=post_db --name mongo_db --network-alias=comment_db -v reddit_db:/data/db mongo:4.0-xenial 
 
@@ -1142,9 +1158,10 @@ services:
 
 В данном случае sshfs_path_to_ui, sshfs_path_to_post-py, sshfs_path_to_comment это пути на удаленной машине 
 
-## HomeWork 19 - Устройство Gitlab CI. Построение процесса непрерывной поставки
+# **HomeWork 19** - Устройство Gitlab CI. Построение процесса непрерывной поставки
 Ставим сервер с помощью terraform и ansible 
-/home/baggurd/microservices/terraform/Gitlab
+
+/microservices/terraform/Gitlab
 
 Для запуска Gitlab CI мы будем использовать omnibus-установку, у
 этого подхода есть как свои плюсы, так и минусы.
@@ -1153,18 +1170,20 @@ services:
 Минусом такого типа установки является то, что такую инсталляцию
 тяжелее эксплуатировать и дорабатывать, но долговременная
 эксплуатация этого сервиса не входит в наши цели.
-Более подробно об этом опять же в документации
+Более подробно об этом опять же в документации:
 https://docs.gitlab.com/omnibus/README.html
+
 https://docs.gitlab.com/omnibus/docker/README.html
 
 В ansible уже прописаны эти настройки для gitlab:
-# mkdir -p /srv/gitlab/config /srv/gitlab/data /srv/gitlab/logs
-# cd /srv/gitlab/
-# touch docker-compose.yml
-
-Заполняем docker-compose.yml:
+```bash
+mkdir -p /srv/gitlab/config /srv/gitlab/data /srv/gitlab/logs
+cd /srv/gitlab/
+touch docker-compose.yml
 ```
-version: "3"
+Заполняем docker-compose.yml на сервере который создали:
+```yaml
+version: "3.6"
 
 services:
   web:
@@ -1173,7 +1192,8 @@ services:
     hostname: 'gitlab.example.com'
     environment:
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://34.77.7.178'
+        external_url 'http://34.79.155.96'
+    # Первый порт это порт ВМ второй порт внутри контейнера.    
     ports:
       - '80:80'
       - '443:443'
@@ -1182,9 +1202,13 @@ services:
       - '/srv/gitlab/config:/etc/gitlab'
       - '/srv/gitlab/logs:/var/log/gitlab'
       - '/srv/gitlab/data:/var/opt/gitlab'
+    # In the example you provided, shm_size: '256m', the value '256m' specifies that the container should have 256 megabytes of shared memory allocated for its /dev/shm directory. This can be useful for applications that require more memory for their shared memory files. default 64mb 
+    shm_size: '256m'
+
 
 ```
 Для установки начального пароля нужно прописать переменные
+(не сработало)
 
 ```
 GITLAB_ROOT_EMAIL="root@local"
@@ -1211,7 +1235,7 @@ docker exec -it 522e6ca5a5c2 bash
 ```
 sudo gitlab-rake "gitlab:password:reset"
 ```
-или можем посмотреть назначенный пароль 
+или можем посмотреть назначенный пароль username root
 ```
 cat etc/gitlab/initial_root_password
 ```
@@ -1242,7 +1266,7 @@ git push gitlab gitlab-ci-1
 Но находится в статусе pending / stuck так как у нас нет runner
 Запустим Runner и зарегистрируем его в интерактивном режиме
 
-Runner
+## **Runner**
 
 Перед тем, как запускать и регистрировать runner нужно получить токен
 Settings - CI/CD - Runners - Expand - 
@@ -1407,7 +1431,7 @@ branch review:
 Описание переменных CI https://docs.gitlab.com/ee/ci/variables/predefined_variables.html
 Некоторое раскрытие работы используемых переменных CI https://docs.gitlab.com/ee/ci/environments.html#example-configuration
 
-Задание с *
+## **Задание с \***
 
 В шаг build добавить сборку контейнера с приложением reddit
 Деплойте контейнер с reddit на созданный для ветки сервер.
@@ -1651,7 +1675,7 @@ production:
     url: https://example.com
 ```
 
-## HomeWork 20 - Введение в мониторинг. Системы мониторинга
+## **20 - Введение в мониторинг. Системы мониторинга**
 - Создано firewall-правило для prometheus `gcloud compute firewall-rules create prometheus-default --allow tcp:9090`
 - Создано firewall-правило для puma `gcloud compute firewall-rules create puma-default --allow tcp:9292`
 - Создан хост docker-machine
@@ -1724,7 +1748,7 @@ done
 - Выполнил `yes > /dev/null` на docker-host и убедился что метрики демонстрируют увеличение нагрузки на процессор
 - Загрузил образы на Docker Hub 
 
-### HW 20: Задание со * 1
+## **HW 20: Задание со * 1**
 - Добавьте в Prometheus мониторинг MongoDB с использованием необходимого экспортера.
 - Использовался экспортер bitnami/mongodb-exporter
 
@@ -1761,7 +1785,7 @@ prometheus.yml
 
 - Пересобрал образ prometheus и перезапустил контейнеры
 
-### HW 20: Задание со * 2 - BlackBox Exporter
+## **HW 20: Задание со * 2 - BlackBox Exporter**
 
 Задание:
 Добавьте в Prometheus мониторинг сервисов comment, post, ui с помощью blackbox экспортера.
@@ -1890,15 +1914,15 @@ probe_http_status_code{instance="ui:9292",job="blackbox"}	200
 т.к. у post нет /metrics, да и вообще не прослушивается порт 9292, статус 0.
 Если для comment не указывать /metrics, то получим 404 (Not Found).
 
-### HW 20 задание со * 3 - Make
+## **HW 20 задание со * 3 - Make**
 
 - Подготовил Makefile, перед запуском нужно выполнить `export USER_NAME=your-docker-hub-login` и `export APP_TAG=latest`
 - Сборка всех контейнеров - `make build-all`
 - Пуш всех контейнеров - `make push-all`
 
-## HomeWork 21 - Мониторинг приложения и инфраструктуры
+# **HomeWork 21 - Мониторинг приложения и инфраструктуры**
 
-### Мониторинг Docker-контейнеров
+## **Мониторинг Docker-контейнеров**
 
 - Перенес описание приложений для мониторинга в отдельный docker-compose-файл microservices/docker `docker-compose-monitoring.yml`
 - Добавил в docker-compose-monitoring.yml описание для контейнера cAdvisor
@@ -1907,7 +1931,7 @@ probe_http_status_code{instance="ui:9292",job="blackbox"}	200
 - Запустил контейнеры `docker-compose up -d && docker-compose -f docker-compose-monitoring.yml up -d`
 - Изучил информацию, которую предоставляет web-интерфейс cAdvisor
 
-### Визуализация метрик
+## **Визуализация метрик**
 
 - Добавил описание Grafana в `docker-compose-monitoring.yml`
 - Запустил контейнер Grafana `docker-compose -f docker-compose-monitoring.yml up -d grafana`
@@ -1917,7 +1941,7 @@ probe_http_status_code{instance="ui:9292",job="blackbox"}	200
 - Импортировал дашборд в Grafana
 - Убедился что появился дашборд, показывающий метрики контейнеров
 
-### Сбор метрик приложения
+## **Сбор метрик приложения**
 
 - В конфиг prometheus.yml добавлен job для сбора метрик с сервиса post
 - Пересобран образ prometheus
@@ -1935,14 +1959,14 @@ probe_http_status_code{instance="ui:9292",job="blackbox"}	200
 - Добавил новый график с вычислением 95-ого процентиля для метрики ui_request_response_time_bucket время обработки запросов (за это время или меньше обрабатываются 95% запросов) `histogram_quantile(0.95, sum(rate(ui_request_response_time_bucket[5m])) by (le))`
 - Экспортировал дашборд в виде json
 
-### Сбор метрик бизнес логики
+## **Сбор метрик бизнес логики**
 
 - Создал новый дашборд Business_Logic_Monitoring
 - Добавил на дашборд график `rate(post_count[1h])`
 - Добавил график `rate(comment_count[1h])`
 - Экпортировал дашборд в json
 
-### Алертинг
+## **Алертинг**
 
 - Создал Dockerfile для alertmanager
 - Добавил config.yml для alertmanager с индвидуальными настройками webhook
@@ -1955,7 +1979,7 @@ probe_http_status_code{instance="ui:9292",job="blackbox"}	200
 - Убедился что правила алертинга отображаются в web-интерфейсе Prometheus
 - Запушил все образы в Docker Hub
 
-### HW21: Задание со *
+## **HW21: Задание со \***
 - В Makefile добавлены команды для сборки новых образов
 
 - В Docker в экспериментальном режиме реализована отдача метрик в формате Prometheus. Добавьте сбор этих метрик в Prometheus. Сравните количество метрик с Cadvisor. Выберите готовый дашборд или создайте свой для этого источника данных. Выгрузите его в monitoring/grafana/dashboards;
@@ -2113,7 +2137,7 @@ grafana_1            | t=2019-06-13T12:28:14+0000 lvl=eror msg="failed to save d
 ```
 Как выяснилось, в json-файлах фигурировали переменные ${DS_PROMETHEUS} и ${DS_PROMETHEUS_SERVER} в параметре datasource. Потребовалось изменить их значения на "Prometheus Server" (соответствует содержимому monitoring/grafana/datasources/datasources.yml).
 
-## Logging
+# **Logging**
 
 В данной работе мы:
 
@@ -2456,7 +2480,7 @@ docker/.env
 ```
 ZIPKIN_ENABLED=true
 ```
-### Задание со * (стр. 53)
+## **Задание со * (стр. 53)**
 Задание:
 С нашим приложением происходит что-то странное. Пользователи жалуются, что при нажатии на пост они вынуждены долго ждать, пока у них загрузится страница с постом. Жалоб на загрузку других страниц не поступало. Нужно выяснить, в чем проблема, используя Zipkin. 
 Репозиторий со сломанным кодом приложения: https://github.com/Artemmkin/bugged-code
@@ -2586,67 +2610,75 @@ def find_post(id):
 time.sleep(3)
 ```
 
-# HW#25 (kubernetes-1)
+# **HW#25 (kubernetes-1)**
 В данной работе мы:
 * развернули kubernetes, опираясь на Kubernetes The Hard Way;
 * ознакомились с описанием основных примитивов нашего приложения и его дальнейшим запуском в Kubernetes.
 
-## Установка Kubernetes
+## **Установка Kubernetes**
 https://github.com/kelseyhightower/kubernetes-the-hard-way
 
-## Kubernetes
+## **Kubernetes**
 Controller Manager в Kubernetes - это компонент управления, который запускает и мониторит контроллеры Kubernetes. Каждый контроллер отвечает за управление определенным ресурсом в Kubernetes, таким как ReplicaSet, Deployment, StatefulSet, DaemonSet и т.д.
 Controller Manager включает в себя несколько контроллеров, каждый из которых является отдельным процессом:
-    1. Node Controller - отвечает за обнаружение, добавление и удаление узлов из кластера Kubernetes.
-    2. Replication Controller - управляет ReplicaSets и обеспечивает, чтобы определенное количество копий Pod всегда было доступно в кластере.
-    3. Endpoints Controller - обновляет Endpoints объекты и обеспечивает, чтобы они содержали актуальную информацию о сервисах и IP-адресах Pod.
-    4. Service Account & Token Controllers - отвечают за создание, обновление и удаление учетных записей и токенов сервисных аккаунтов в кластере.
-    5. Namespace Controller - обрабатывает создание и удаление пространств имен в кластере.
-    6. Service Controller - управляет объектами Service в Kubernetes.
+-  1. Node Controller - отвечает за обнаружение, добавление и удаление узлов из кластера Kubernetes.
+-  2. Replication Controller - управляет ReplicaSets и обеспечивает, чтобы определенное количество копий Pod всегда было доступно в кластере.
+-  3. Endpoints Controller - обновляет Endpoints объекты и обеспечивает, чтобы они содержали актуальную информацию о сервисах и IP-адресах Pod.
+-  4. Service Account & Token Controllers - отвечают за создание, обновление и удаление учетных записей и токенов сервисных аккаунтов в кластере.
+-  5. Namespace Controller - обрабатывает создание и удаление пространств имен в кластере.
+-  6. Service Controller - управляет объектами Service в Kubernetes.
+
 Контроллеры запускаются в режиме постоянного мониторинга состояния объектов, которыми они управляют. Если обнаруживается какое-то несоответствие между текущим и желаемым состоянием объекта, контроллер автоматически принимает меры для исправления ситуации, пока текущее состояние не соответствует желаемому.
 Controller Manager является одним из основных компонентов Kubernetes, который обеспечивает надежную и автоматизированную работу кластера, позволяя пользователям создавать, масштабировать и управлять приложениями в контейнерах.
 
 Kubelet - это агент управления узлом в кластере Kubernetes. Kubelet запускается на каждом узле кластера и отвечает за управление контейнерами, которые запущены на этом узле. Kubelet получает информацию о контейнерах, которые должны быть запущены на узле, из API-сервера Kubernetes и затем работает непосредственно с Docker-демоном, чтобы создавать и управлять контейнерами.
 Kubelet выполняет следующие функции:
-    1. Запускает и останавливает контейнеры на узле в соответствии с API-сервером Kubernetes.
-    2. Мониторит работу контейнеров и перезапускает их, если они перестали работать.
-    3. Обеспечивает наличие необходимых ресурсов для запуска контейнеров на узле, например, проверяет наличие достаточного количества свободной памяти и процессорного времени.
-    4. Предоставляет API-интерфейс для управления контейнерами на узле.
-    5. Обновляет состояние узла в API-сервере Kubernetes и отчитывается о статусе контейнеров на узле.
+
+- 1. Запускает и останавливает контейнеры на узле в соответствии с API-сервером Kubernetes.
+- 2. Мониторит работу контейнеров и перезапускает их, если они перестали работать.
+- 3. Обеспечивает наличие необходимых ресурсов для запуска контейнеров на узле, например, проверяет наличие достаточного количества свободной памяти и процессорного времени.
+- 4. Предоставляет API-интерфейс для управления контейнерами на узле.
+- 5. Обновляет состояние узла в API-сервере Kubernetes и отчитывается о статусе контейнеров на узле.
+
 Kubelet работает в тесном взаимодействии с другими компонентами Kubernetes, такими как API-сервер, Scheduler и Controller Manager, и является ключевым элементом в механизме управления контейнерами на узлах кластера.
 
 kube-proxy - это сетевой прокси-сервер, который работает на каждом узле кластера Kubernetes. Он отвечает за маршрутизацию сетевых запросов внутри кластера, обеспечивая доступ к сервисам Kubernetes изнутри и снаружи кластера.
 kube-proxy выполняет следующие функции:
-    1. Он устанавливает правила IP-маршрутизации и балансировки нагрузки для сервисов Kubernetes.
-    2. Он следит за состоянием сервисов и обновляет правила маршрутизации и балансировки нагрузки, если происходят изменения в состоянии сервисов.
-    3. Он обеспечивает доступ к сервисам Kubernetes изнутри и снаружи кластера.
-    4. Он обеспечивает возможность работы сетевых политик Kubernetes.
-kube-proxy работает в тесном взаимодействии с другими компонентами Kubernetes, такими как API-сервер, Scheduler, Controller Manager и Kubelet, и является важным компонентом в механизме работы сервисов и сети в Kubernetes.
+-    1. Он устанавливает правила IP-маршрутизации и балансировки нагрузки для сервисов Kubernetes.
+-    2. Он следит за состоянием сервисов и обновляет правила маршрутизации и балансировки нагрузки, если происходят изменения в состоянии сервисов.
+-    3. Он обеспечивает доступ к сервисам Kubernetes изнутри и снаружи кластера.
+-    4. Он обеспечивает возможность работы сетевых политик Kubernetes.
 
-kube-scheduler - это компонент Kubernetes, который отвечает за планирование запуска подов на узлах кластера. Kube-scheduler выбирает подходящий узел для запуска пода на основе ряда критериев, таких как доступность ресурсов, местоположение пода и требования к сети.
-Когда создается новый под, kube-scheduler анализирует его требования к ресурсам, политику толерантности к отказам и другие параметры, затем выбирает подходящий узел для запуска пода. В случае, если несколько узлов удовлетворяют требованиям пода, kube-scheduler выберет наиболее подходящий из них.
-Kube-scheduler использует также возможности сети для планирования размещения подов. Он учитывает требования к сети, такие как доступность сервисов и маршрутизация трафика, при выборе узла для запуска пода.
-Kube-scheduler является важным компонентом в механизме управления запуском подов в Kubernetes. Он работает в тесном взаимодействии с другими компонентами Kubernetes, такими как API-сервер, Controller Manager и Kubelet, и обеспечивает эффективное распределение подов по узлам кластера.
+- kube-proxy работает в тесном взаимодействии с другими компонентами Kubernetes, такими как API-сервер, Scheduler, Controller Manager и Kubelet, и является важным компонентом в механизме работы сервисов и сети в Kubernetes.
 
-etcd - это распределенное хранилище ключ-значение, используемое для хранения конфигурации, метаданных и состояния в кластере Kubernetes. Оно предназначено для сохранения и синхронизации данных между узлами кластера.
-etcd является частью стека технологий, используемых в Kubernetes, и предоставляет механизм, необходимый для обеспечения согласованности и надежности кластера. etcd является распределенным, надежным и устойчивым к сбоям хранилищем данных, которое обеспечивает возможность хранения ключ-значение пар с возможностью автоматического определения и устранения ошибок.
-В Kubernetes etcd используется для хранения всех важных конфигурационных данных, таких как информация о ресурсах кластера, состояние запущенных приложений, конфигурация сети и т.д. Все компоненты Kubernetes, такие как API-сервер, Scheduler, Controller Manager и Kubelet, общаются с etcd для получения и обновления информации о состоянии кластера.
-etcd поддерживает механизмы репликации и распределения данных, что позволяет ему обеспечивать высокую доступность и устойчивость к сбоям. Это позволяет Kubernetes работать бесперебойно даже в случае отказа одного или нескольких узлов кластера.
+- kube-scheduler - это компонент Kubernetes, который отвечает за планирование запуска подов на узлах кластера. Kube-scheduler выбирает подходящий узел для запуска пода на основе ряда критериев, таких как доступность ресурсов, местоположение пода и требования к сети.
+
+- Когда создается новый под, kube-scheduler анализирует его требования к ресурсам, политику толерантности к отказам и другие параметры, затем выбирает подходящий узел для запуска пода. В случае, если несколько узлов удовлетворяют требованиям пода, 
+
+- kube-scheduler выберет наиболее подходящий из них.
+
+- Kube-scheduler использует также возможности сети для планирования размещения подов. Он учитывает требования к сети, такие как доступность сервисов и маршрутизация трафика, при выборе узла для запуска пода.
+- Kube-scheduler является важным компонентом в механизме управления запуском подов в Kubernetes. Он работает в тесном взаимодействии с другими компонентами Kubernetes, такими как API-сервер, Controller Manager и Kubelet, и обеспечивает эффективное распределение подов по узлам кластера.
+
+- etcd - это распределенное хранилище ключ-значение, используемое для хранения конфигурации, метаданных и состояния в кластере Kubernetes. Оно предназначено для сохранения и синхронизации данных между узлами кластера.
+- etcd является частью стека технологий, используемых в Kubernetes, и предоставляет механизм, необходимый для обеспечения согласованности и надежности кластера. etcd является распределенным, надежным и устойчивым к сбоям хранилищем данных, которое обеспечивает возможность хранения ключ-значение пар с возможностью автоматического определения и устранения ошибок.
+- В Kubernetes etcd используется для хранения всех важных конфигурационных данных, таких как информация о ресурсах кластера, состояние запущенных приложений, конфигурация сети и т.д. Все компоненты Kubernetes, такие как API-сервер, Scheduler, Controller Manager и Kubelet, общаются с etcd для получения и обновления информации о состоянии кластера.
+- etcd поддерживает механизмы репликации и распределения данных, что позволяет ему обеспечивать высокую доступность и устойчивость к сбоям. Это позволяет Kubernetes работать бесперебойно даже в случае отказа одного или нескольких узлов кластера.
 apiVersion - это поле в конфигурационных файлах Kubernetes, которое указывает на версию API, используемую для определенного ресурса. В Kubernetes API используется схема версионирования, где каждая версия API имеет свой собственный набор объектов и ресурсов.
-Например, объекты Deployment, Service и Pod относятся к разным версиям API в Kubernetes:
-    • Deployment использует API-версию apps/v1
-    • Service использует API-версию v1
-    • Pod использует API-версию v1
-kind - это поле в конфигурационных файлах Kubernetes, которое указывает на тип ресурса, который вы пытаетесь создать или изменить. Оно определяет объект Kubernetes, который должен быть создан или изменен в вашем кластере.
+- Например, объекты Deployment, Service и Pod относятся к разным версиям API в Kubernetes:
+-    • Deployment использует API-версию apps/v1
+-    • Service использует API-версию v1
+-    • Pod использует API-версию v1
+- kind - это поле в конфигурационных файлах Kubernetes, которое указывает на тип ресурса, который вы пытаетесь создать или изменить. Оно определяет объект Kubernetes, который должен быть создан или изменен в вашем кластере.
 
 
-Deployment – наиболее часто используемый объект API в кластере  Kubernetes. Это типичный объект API, выполняющий развертывание, например, микросервиса;
+- Deployment – наиболее часто используемый объект API в кластере  Kubernetes. Это типичный объект API, выполняющий развертывание, например, микросервиса;
 
-metadata - это поле в конфигурационных файлах Kubernetes, которое содержит метаданные об объекте, такие как имя объекта, его уникальный идентификатор, аннотации, метки (labels) и т.д.
-Каждый объект Kubernetes имеет метаданные, которые определяют его уникальность и помогают в управлении им. Например, имя объекта должно быть уникальным в пределах одного пространства имен (namespace) Kubernetes.
-Метаданные также могут содержать аннотации, которые могут использоваться для хранения дополнительной информации о объекте. Это может быть полезно для интеграции с другими системами и инструментами.
-Метки (labels) - это пары ключ-значение, которые могут использоваться для сортировки, поиска и выборки объектов. Например, можно использовать метки для разделения приложений на продукционные и тестовые версии.
-В конфигурационном файле Kubernetes, метаданные определяются в блоке metadata. Например, вот пример метаданных для объекта Pod:
+- metadata - это поле в конфигурационных файлах Kubernetes, которое содержит метаданные об объекте, такие как имя объекта, его уникальный идентификатор, аннотации, метки (labels) и т.д.
+- Каждый объект Kubernetes имеет метаданные, которые определяют его уникальность и помогают в управлении им. Например, имя объекта должно быть уникальным в пределах одного пространства имен (namespace) Kubernetes.
+- Метаданные также могут содержать аннотации, которые могут использоваться для хранения дополнительной информации о объекте. Это может быть полезно для интеграции с другими системами и инструментами.
+- Метки (labels) - это пары ключ-значение, которые могут использоваться для сортировки, поиска и выборки объектов. Например, можно использовать метки для разделения приложений на продукционные и тестовые версии.
+- В конфигурационном файле Kubernetes, метаданные определяются в блоке metadata. Например, вот пример метаданных для объекта Pod:
 ```
 apiVersion: v1
 kind: Pod
@@ -2659,8 +2691,8 @@ metadata:
 ```
 В этом примере мы определили имя объекта my-pod и метки app: myapp. Мы также определили аннотацию description, которая содержит дополнительную информацию о нашем тестовом поде.
 
-spec - это поле в конфигурационных файлах Kubernetes, которое содержит специфические для ресурса параметры и описание желаемого состояния объекта Kubernetes. в Kubernetes есть множество различных ресурсов, и каждый ресурс имеет свои собственные параметры в поле spec. в поле spec могут быть указаны параметры, такие как количество контейнеров, образы контейнеров и т.д.
-В общем случае, поле spec используется для определения желаемого состояния объекта Kubernetes, которое система должна поддерживать. Оно описывает конфигурацию ресурса, который вы хотите создать или изменить в вашем кластере.
+- spec - это поле в конфигурационных файлах Kubernetes, которое содержит специфические для ресурса параметры и описание желаемого состояния объекта Kubernetes. в Kubernetes есть множество различных ресурсов, и каждый ресурс имеет свои собственные параметры в поле spec. в поле spec могут быть указаны параметры, такие как количество контейнеров, образы контейнеров и т.д.
+- В общем случае, поле spec используется для определения желаемого состояния объекта Kubernetes, которое система должна поддерживать. Оно описывает конфигурацию ресурса, который вы хотите создать или изменить в вашем кластере.
 ```
 apiVersion: apps/v1
 kind: Deployment
@@ -2684,14 +2716,14 @@ spec:
 ```
 selector - это поле в конфигурационных файлах Kubernetes, которое определяет, какие объекты Kubernetes будут управляться данным ресурсом.
 
-В этом примере мы указываем метку app: nginx в поле selector, которая соответствует метке, определенной в шаблоне Pod. Таким образом, все Pod'ы, управляемые данным Deployment, будут иметь метку app: nginx, что позволит Deployment отслеживать их состояние и автоматически перезапускать их при необходимости.
-Шаблон Pod (Pod template) - это часть конфигурации объекта Deployment, которая описывает, как создавать Pod'ы, управляемые данным Deployment. Шаблон Pod может содержать параметры, такие как образы контейнеров, метки и другие настройки контейнера.
-В объекте Deployment в конфигурационном файле Kubernetes, шаблон Pod задается в поле spec.template
-В этом примере мы определяем шаблон Pod, содержащий один контейнер Nginx. Метка app: nginx определяется в поле metadata.labels шаблона Pod, и она соответствует метке, которая была определена в поле selector объекта Deployment. 
+- В этом примере мы указываем метку app: nginx в поле selector, которая соответствует метке, определенной в шаблоне Pod. Таким образом, все Pod'ы, управляемые данным Deployment, будут иметь метку app: nginx, что позволит Deployment отслеживать их состояние и автоматически перезапускать их при необходимости.
+- Шаблон Pod (Pod template) - это часть конфигурации объекта Deployment, которая описывает, как создавать Pod'ы, управляемые данным Deployment. Шаблон Pod может содержать параметры, такие как образы контейнеров, метки и другие настройки контейнера.
+- В объекте Deployment в конфигурационном файле Kubernetes, шаблон Pod задается в поле spec.template
+- В этом примере мы определяем шаблон Pod, содержащий один контейнер Nginx. Метка app: nginx определяется в поле metadata.labels шаблона Pod, и она соответствует метке, которая была определена в поле selector объекта Deployment. 
 
 
-Для того, чтобы Kubernetes мог загружать контейнеры из реестра Docker Hub, вам нужно указать учетные данные Docker Hub в качестве секрета Kubernetes. Для этого можно воспользоваться командой kubectl create secret docker-registry.
-Вот пример создания секрета Docker Hub в Kubernetes:
+- Для того, чтобы Kubernetes мог загружать контейнеры из реестра Docker Hub, вам нужно указать учетные данные Docker Hub в качестве секрета Kubernetes. Для этого можно воспользоваться командой kubectl create secret docker-registry.
+- Вот пример создания секрета Docker Hub в Kubernetes:
 ```bash
 kubectl create secret docker-registry my-secret \
     --docker-server=https://index.docker.io/v1/ \
@@ -2712,7 +2744,7 @@ kubectl create secret generic regcred \
     --from-file=.dockerconfigjson=/home/baggurd/.docker/config.json \
     --type=kubernetes.io/dockerconfigjson
 ```    
-###Расшифровка секрета
+### Расшифровка секрета
 kubectl get secret regcred -o jsonpath='{.data.\.dockerconfigjson}' | base64 –decode
 
 Для использования секрета:
@@ -2757,8 +2789,8 @@ kubectl get secret my-secret -o jsonpath='{.data.password}' | base64 --decode
 ```bash
 kubectl port-forward ui-deployment-845dd999b-hbh7q 8080:9292
 ```
-Команда kubectl port-forward позволяет установить прямое соединение между локальным компьютером и выбранным подом в Kubernetes, чтобы можно было получить доступ к сервисам, запущенным в этом поде.
-В данном случае команда kubectl port-forward ui-deployment-845dd999b-hbh7q 8080:9292 устанавливает соединение с подом, идентифицированным метками app=ui и pod-template-hash=845dd999b, и перенаправляет локальный порт 8080 на порт 9292 в этом поде. Это означает, что если вы откроете браузер и перейдете по адресу http://localhost:8080, то вы сможете получить доступ к веб-интерфейсу, запущенному в поде.
+- Команда kubectl port-forward позволяет установить прямое соединение между локальным компьютером и выбранным подом в Kubernetes, чтобы можно было получить доступ к сервисам, запущенным в этом поде.
+- В данном случае команда kubectl port-forward ui-deployment-845dd999b-hbh7q 8080:9292 устанавливает соединение с подом, идентифицированным метками app=ui и pod-template-hash=845dd999b, и перенаправляет локальный порт 8080 на порт 9292 в этом поде. Это означает, что если вы откроете браузер и перейдете по адресу http://localhost:8080, то вы сможете получить доступ к веб-интерфейсу, запущенному в поде.
 
 Зайти внутрь контейнера
 ```bash
@@ -2806,7 +2838,7 @@ Content-Length: 1851
 ```
 Работает
 
-# HW#25 (kubernetes-2) Основные модели безопасности и контроллеры в Kubernetes
+# HW#26 (kubernetes-2) Основные модели безопасности и контроллеры в Kubernetes
 
 Разворачиваем kubernetes локально
 
@@ -2818,7 +2850,7 @@ Content-Length: 1851
 - Установка Minikube
 - https://minikube.sigs.k8s.io/docs/start/
 
--  Запустим наш Minukube-кластер 
+-  Запустим наш Minikube-кластер 
 -  minikube start
 
 - Посмотрим ноды:
@@ -2904,7 +2936,7 @@ post-deployment.yml
 Не забудьте, что post слушает по-умолчанию на порту 5000
 mongo-deployment.yml
 
-### Services
+## Services
 
 В Kubernetes ресурс kind: Service используется для создания стабильного сетевого интерфейса для доступа к одному или нескольким репликам подов в кластере.
 
@@ -3104,7 +3136,7 @@ http://127.0.0.1:40679/api/v1/namespaces/kubernetes-dashboard/services/http:kube
 - при включении Heapster-аддона смотреть нагрузку на Pod-ах
 - и т.д.
 
-### Namespace
+## Namespace
 Отделим среду для разработки приложения от всего остального кластера.
 Для этого создадим свой Namespace dev
 ```yaml
@@ -3142,7 +3174,7 @@ kubectl apply -f /home/baggurd/microservices/kubernetes/reddit/ui-deployment.yml
 ```
 На сайте заголовке видим приписку Microservices Reddit in dev ui-ff5c4db7f-6b2kl container
 
-### Разворачиваем Kubernetes в Google GKE
+## Разворачиваем Kubernetes в Google GKE
 
 - Запущено создание кластера Kubernetes через web-консоль Google Cloud
 - Подключимся к GKE для запуска нашего приложения. Добавляем нужные права.
@@ -3172,7 +3204,7 @@ gcloud container clusters get-credentials cluster-1 --zone us-central1-c --proje
 kubectl config current-context
 ```
 
-### Запустим наше приложение в GKE
+## Запустим наше приложение в GKE
 
 Создадим dev namespace
 ```bash
@@ -3222,9 +3254,9 @@ Kubernetes Dashboard add-on больше не поддерживается
 https://cloud.google.com/kubernetes-engine/docs/concepts/dashboards
 
 
-## Homework Kubernetes. Network. Storage
+# 27 Homework Kubernetes. Network. Storage
 
-### Сетевое взаимодействие
+## Сетевое взаимодействие
 Service - определяет конечные узлы доступа (Endpoint’ы):
 •селекторные сервисы (k8s сам находит POD-ы по label’ам)
 •безселекторные сервисы (мы вручную описываем конкретные endpoint’ы)
@@ -3237,7 +3269,7 @@ Service - определяет конечные узлы доступа (Endpoin
 ClusterIP - это виртуальный (в реальности нет интерфейса, pod’а или машины с таким адресом) IP-адрес из диапазона адресов для работы внутри, скрывающий за собой IP-адреса реальных POD-ов. Сервису любого типа (кроме ExternalName) назначается этот IP-адрес.
 kubectl get services -n dev
 
-#### Kube-DNS
+## Kube-DNS
 Отметим, что Service - это лишь абстракция и описание того, как получить доступ к сервису. Но опирается она на реальные механизмы и объекты: DNS-сервер, балансировщики, iptables.
 
 Для того, чтобы дойти до сервиса, нам нужно узнать его адрес по имени. Kubernetes не имеет своего собственного DNS-сервера для разрешения имен. Поэтому используется плагин kube-dns (это тоже Pod).
@@ -3300,7 +3332,7 @@ Kubernetes не имеет в комплекте механизма органи
 Посмотреть правила, согласно которым трафик отправляется на ноды можно здесь:
 https://console.cloud.google.com/networking/routes/
 
-####nodePort
+## nodePort
 
 Service с типом NodePort - похож на сервис типа ClusterIP, только к нему прибавляется прослушивание портов нод (всех нод) для доступа к сервисам снаружи. При этом ClusterIP также назначается этому сервису для доступа к нему изнутри кластера.
 
@@ -3364,7 +3396,7 @@ kubectl get service -n dev --selector component=ui
 • используются только облачные балансировщики (AWS, GCP)
 • нет гибких правил работы с трафиком
 
-#### Ingress
+## Ingress
 
 Для более удобного управления входящим снаружи трафиком и решения недостатков
 LoadBalancer можно использовать другой объект Kubernetes - Ingress.
@@ -3372,7 +3404,7 @@ Ingress – это набор правил внутри кластера Kuberne
 
 Сами по себе Ingress’ы это просто правила. Для их применения нужен Ingress Controller.
 
-#### Ingress Conroller
+## Ingress Conroller
 
 Для работы Ingress-ов необходим Ingress Controller.
 В отличие остальных контроллеров k8s - он не стартует вместе с кластером.
@@ -3541,7 +3573,7 @@ kubectl get ingress -n dev
 Проверяем что приложение работает.
 http://34.111.45.26/
 
-#### Secret
+### Secret
 
 Теперь давайте защитим наш сервис с помощью TLS.
 
@@ -3635,7 +3667,7 @@ $ kubectl apply -f ui-ingress.yml -n dev
 получилось зайти с первой попытки - подождите и
 попробуйте еще раз
 
-#### HW 27: Задание со *
+## HW 27: Задание со *
 
 пишите создаваемый объект Secret в виде Kubernetes-манифеста:
 Данная команда создает манифест объекта Secret, который содержит TLS-сертификат и ключ для использования в Ingress, и сохраняет его в файл ui-ingress-secret.yml
@@ -3922,7 +3954,7 @@ kubectl describe storageclass standard-rwo -n dev
 Подключим PVC к нашим Pod'ам
 mongo-deployment.yml
 
-#### Динамическое выделение Volume'ов
+### Динамическое выделение Volume'ов
 
 Создав PersistentVolume мы отделили объект "хранилища" от наших Service'ов и Pod'ов. Теперь мы можем его при необходимости переиспользовать.
 
@@ -3993,3 +4025,865 @@ kubectl get persistentvolume -n dev
 
 На созданные Kubernetes'ом диски можно посмотреть в web console
 https://console.cloud.google.com/compute/disks
+
+
+# **HomeWork 28 - CI/CD в Kubernetes**
+
+## **Helm**
+
+## Устанавливаем helm
+https://helm.sh/docs/intro/install/
+
+Helm читает конфигурацию kubectl (~/.kube/config) и сам определяет текущий контекст (кластер, пользователь, неймспейс) <br/>
+Если хотите сменить кластер, то либо меняйте контекст с помощью
+```bash
+kubectl config set-context
+```
+либо подгружайте helm’у собственный conﬁg-файл флагом –kube-context.
+
+Проверка (нужен vpn):
+```bash
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm search repo bitnami
+helm repo update
+# Ставим kubernetes кластер если он еще не стоит
+helm install bitnami/mysql –generate-name
+helm show chart bitnami/mysql
+helm show all bitnami/mysql
+# Посмотреть наши установки через helm
+helm list
+# Проверили теперь удаляем
+helm uninstall mysql mysql-1678275778
+# help:
+helm get -h
+# Ищем в хабе:
+helm search hub wordpress
+```
+
+## **Charts**
+Подгатавливаем директории для чарта в папке kubernetes со следующей структурой директорий:
+
+> Chart
+>> comment <br/>
+>> post <br/>
+>> reddit <br/>
+>> ui <br/>
+
+### **Разработка чарта ui, каталог ui**
+```bash
+├── Chart.yaml
+├── templates
+│   ├── deployment.yaml
+│   ├── ingress.yaml
+│   └── service.yaml
+└── values.yaml
+```
+### Chart.yaml: 
+Реально значимыми являются поля name и version. От них зависит работа Helm’а с Chart’ом. Остальное - описания.
+```yaml
+---
+apiVersion: v2
+name: ui
+version: 1.0.0
+description: OTUS reddit application UI
+maintainers:
+  - name: VasiliyBasov
+    email: vasiliy.basov.82@gmail.com
+appVersion: "1.0"
+```
+Основным содержимым манифестов Kubernetes. Chart’ов являются шаблоны
+1. Создайте директорию ui/templates
+2. Перенесите в неё все манифесты, разработанные ранее для сервиса ui (ui-service, ui-deployment, ui-ingress) (из каталога /kubernetes/reddit)
+3. Переименуйте их (уберите префикс “ui-“) и поменяйте расширение на .yaml) - стилистические правки
+
+По-сути, это уже готовый пакет для установки в Kubernetes
+- Убедитесь, что у вас не развернуты компоненты приложения в kubernetes. Если развернуты - удалите их:
+```bash
+kubectl get namespaces
+kubectl delete namespace dev
+```
+```bash
+# Установка Чарта
+helm install test-ui-1 ui/
+# Просмотр чартов
+helm list
+# Удаление 
+helm uninstall test-ui-1
+kubectl describe namespace default
+```
+```bash
+# Как подключиться к Kubernetes Cluster GKE?
+gcloud container clusters get-credentials dev-cluster --zone us-central1-c
+```
+
+Установим несколько релизов ui
+```bash
+helm install ui-1 ui/
+helm install ui-2 ui/
+helm install ui-3 ui/
+```
+
+Должны появиться 3 ingress'а
+```bash
+kubectl get ingress
+```
+По IP-адресам можно попасть на разные релизы ui- приложений.P.S. подождите пару минут, пока ingress’ы станут доступными
+## **Templates**
+
+Мы уже сделали возможность запуска нескольких версий приложений из одного пакета манифестов, используя лишь встроенные переменные. Кастомизируем установку своими переменными (образ и порт).
+
+## **Шаблонизируем ui**
+
+**deployment.yaml:**
+```yaml 
+...
+    spec:
+      containers:
+      - image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+        name: ui
+        # определяет порт, который будет использоваться для связи с контейнером.
+        ports:
+        # Это параметр контейнера в Kubernetes, который определяет порт, на котором контейнер должен слушать входящие соединения. 
+        # Таким образом, приложение, работающее в контейнере, будет доступно на этом порту внутри кластера Kubernetes, 
+        # а также снаружи кластера, если соответствующие правила доступа настроены.
+        - containerPort: {{ .Values.service.internalPort }}
+...        
+```
+**service.yaml**
+```yaml
+...
+    - port: {{ .Values.service.externalPort }} # эта переменная берется из файла values.yaml
+      protocol: TCP
+      # Порт pod-а
+      targetPort: {{ .Values.service.internalPort }}
+...
+```
+**ingress.yaml**
+```yaml
+...
+spec:
+  # tls:
+  # - secretName: ui-ingress
+  # здесь мы определяем правила маршрутизации для входящих запросов.
+  rules:
+  # мы указываем, что будем маршрутизировать запросы по HTTP протоколу.
+  - http:
+      # здесь мы определяем пути, которые будут маршрутизироваться.
+      paths:
+      # мы определяем, что будем маршрутизировать запросы с корневого пути.
+      - path: /
+        # это указывает, что мы будем использовать префиксное сопоставление для маршрутизации запросов. 
+        # То есть любой запрос, который начинается с указанного пути, будет считаться соответствующим.
+        pathType: Prefix
+        # здесь мы определяем, какой сервис будет обрабатывать запросы, соответствующие указанному пути.
+        backend:
+          # мы указываем, что будем использовать сервис для обработки запросов.
+          service:
+            # мы указываем имя сервиса, который будет обрабатывать запросы.
+            name: {{ .Release.Name }}-{{ .Chart.Name }}
+            # Порт на который будет посылаться трафик на сервис NodePort (прописан в ui-service.yml)
+            port:
+              number: {{ .Values.service.externalPort }}
+...
+```
+
+**Определим значения собственных переменных ui/values.yaml:**
+```yaml
+---
+service:
+  internalPort: 9292
+  externalPort: 9292
+
+image:
+  repository: vasiliybasov/ui
+  tag: latest
+```
+```bash
+helm upgrade ui-1 ui/
+helm upgrade ui-2 ui/
+helm upgrade ui-3 ui/
+```
+Мы собрали Chart для развертывания ui-компоненты приложения.
+
+## **Шаблонизируем post**
+
+Каталог post:
+```bash
+├── Chart.yaml
+├── templates
+│   ├── deployment.yaml
+│   ├── _helpers.tpl
+│   └── service.yaml
+└── values.yaml
+```
+Каталог Templates:
+
+service.yaml
+```yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # В DNS появится запись для {{ .Release.Name }}-{{ .Chart.Name }}. Что бы узнать ip адрес: kubectl get svc post
+  name: {{ .Release.Name }}-{{ .Chart.Name }}
+  # Метки для сервиса post: "app: reddit" и "component: post"
+  labels:
+    app: reddit
+    component: post
+    release: {{ .Release.Name }} # помечаем что сервис из конкретного релиза    
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.service.externalPort }} # эта переменная берется из файла values.yaml
+    protocol: TCP
+    targetPort: {{ .Values.service.internalPort }} # перенаправляет трафик на internalPort в поды, которые имеют метки "app: reddit" и "component: post", release: {{ .Release.Name }}
+  # Это означает, что любой трафик, направленный на сервис post:internalPort будет автоматически распределен между подами, которые соответствуют меткам селектора.
+  selector:
+    app: reddit
+    component: post
+    release: {{ .Release.Name }}
+```
+deployment.yaml
+```yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-{{ .Chart.Name }}
+  labels:
+    app: reddit
+    component: post
+    release: {{ .Release.Name }}
+#   annotations:
+#     description: "This is my post pod"    
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reddit
+      component: post
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      name: post
+      labels:
+        app: reddit
+        component: post
+        release: {{ .Release.Name }}
+    spec:
+      containers:
+      - image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        name: post
+        ports:
+        - containerPort: {{ .Values.service.internalPort }}
+          name: post
+          protocol: TCP
+        env:        # определяем значение переменной POST_DATABASE_HOST (адрес либо имя с базой данных mongo для post) которая будет равна либо значению в values.yaml (например внешняя база данных)
+        # либо если значение не задано '<название релиза>-mongodb' это значение соответствует адресу базы, поднятой внутри релиза
+        - name: POST_DATABASE_HOST
+          value: {{ .Values.databaseHost | default (printf "%s-mongodb" .Release.Name)}}      
+      imagePullSecrets:
+      - name: regcred
+        # определяем значение переменной POST_DATABASE_HOST (адрес либо имя с базой данных mongo для post) которая будет равна либо значению в values.yaml (например внешняя база данных)
+        # либо если значение не задано '<название релиза>-mongodb' это значение соответствует адресу базы, поднятой внутри релиза
+        - name: POST_DATABASE_HOST
+          value: {{ .Values.databaseHost | default (printf "%s-mongodb" .Release.Name)}}      
+      imagePullSecrets:
+      - name: regcred
+```
+Обратим внимание на адрес БД
+```yaml
+        env:
+        - name: POST_DATABASE_HOST
+          value: postdb
+```
+Поскольку адрес БД может меняться в зависимости от условий запуска:
+- бд отдельно от кластера
+- бд запущено в отдельном релизе
+- … , то создадим удобный шаблон для задания адреса БД.
+
+Будем задавать бд через переменную databaseHost. Иногда лучше использовать подобный формат переменных вместо структур database.host, так как тогда прийдется определять структуру database, иначе helm выдаст ошибку. Используем функцию default. Если databaseHost не будет определена или ее значение будет пустым, то используется вывод функции printf (которая просто формирует строку <имя-релиза>-mongodb)
+
+В итоге должно получиться:
+```yaml
+        env:
+        # определяем значение переменной POST_DATABASE_HOST (адрес либо имя с базой данных mongo для post) которая будет равна либо значению в values.yaml (например внешняя база данных)
+        # либо если значение не задано '<название релиза>-mongodb'  (release-name-mongodb) это значение соответствует адресу базы, поднятой внутри релиза
+        - name: POST_DATABASE_HOST
+          value: {{ .Values.databaseHost | default (printf "%s-mongodb" .Release.Name)}}
+```
+
+Более подробная документация https://docs.helm.sh/chart_template_guide/#the-chart-template-developer-s-guide
+
+post/values.yaml
+```yaml
+---
+service:
+  internalPort: 5000
+  externalPort: 5000
+
+image:
+  repository: vasiliybasov/post
+  tag: latest
+
+databaseHost:
+```
+
+## **Шаблонизируем comment**
+
+аналогично post
+
+## **_helpers.tpl - функции**
+Также стоит отметить функционал helm по использованию helper’ов и функции templates. <br/>
+Helper - это написанная нами функция. В функция описывается, как правило, сложная логика.
+Шаблоны этих функция распологаются в файле **_helpers.tpl**
+
+Пример функции **comment.fullname**: <br/>
+charts/comment/templates/_helpers.tpl
+
+<span style="color:red"> !!! Нельзя комментировать в этих файлах _helpers.tpl иначе будет ошибка </span>
+```yaml
+{{- define "ui.fullname" -}}
+{{- printf "%s-%s" .Release.Name .Chart.Name }}
+{{- end -}}
+```
+
+Эта функция в результате выдаст тоже что и 
+```yaml
+{{ .Release.Name }}-{{ .Chart.Name }}
+```
+
+И заменим в соответствующие строчки в файле, чтобы использовать helper <br/>
+charts/comment/templates/service.yaml
+```yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "comment.fullname" . }}
+```
+
+- Создали файл **_helpers.tpl** в папках templates сервисов ui, post и comment и вставили эту функцию в шаблонах манифестов там где это требуется
+
+## **Mongodb**
+
+Также настроили chart для mongodb /microservices/kubernetes/charts/mongodb
+
+## **Объединение чартов для запуска в одном релизе**
+Мы создали Chart’ы для каждой компоненты нашего приложения. Каждый из них можно запустить по-отдельности Но они будут запускаться в разных релизах, и не будут видеть друг друга. С помощью механизма управления зависимостями создадим единый Chart reddit, который объединит наши компоненты.
+
+/charts/reddit
+```bash
+├── Chart.yaml
+└── values.yaml
+```
+
+Chart.yaml
+```yaml
+---
+apiVersion: v2
+name: reddit
+version: 0.1.0
+description: OTUS sample reddit application
+maintainers:
+  - name: VasiliyBasov
+    email: vasiliy.basov.82@gmail.com
+dependencies:
+  - name: ui
+    version: "1.0.0"
+    repository: "file://../ui"
+
+  - name: post
+    version: "1.0.0"
+    repository: "file://../post"
+
+  - name: comment
+    version: "1.0.0"
+    repository: "file://../comment"
+
+  - name: mongodb
+    version: "1.0.0"
+    repository: "file://../mongodb"
+```
+
+Теперь собираем все чарты в один с фиксацией зависимостей (выполняем в каталоге /charts/reddit):
+```bash
+helm dep update
+```
+
+Структура станет следующей:
+
+```bash
+├── Chart.lock
+├── charts
+│   ├── comment-1.0.0.tgz
+│   ├── mongodb-1.0.0.tgz
+│   ├── post-1.0.0.tgz
+│   └── ui-1.0.0.tgz
+├── Chart.yaml
+└── values.yaml
+```
+
+Установим наше приложение где reddit это каталог reddit-test имя:
+
+```bash
+helm upgrade --install reddit-test ./reddit
+```
+
+Найдем ip адрес
+```bash
+kubectl get ingress
+```
+Зайдем по ip адресу проверить приложение (не правильно работает)
+
+Есть проблема с тем, что UI-сервис не знает как правильно ходить в post и comment сервисы. Ведь их имена теперь динамические и зависят от имен чартов <br/>
+В Dockerﬁle UI-сервиса уже заданы переменные окружения. Надо, чтобы они указывали на нужные бекенды
+```dockerfile
+ENV POST_SERVICE_HOST post
+ENV POST_SERVICE_PORT 5000
+ENV COMMENT_SERVICE_HOST comment
+ENV COMMENT_SERVICE_PORT 9292
+```
+
+Добавим в ui/deployments.yaml
+
+```yaml
+        env:
+        # Так как в Dockerfile UI-service уже заданы имена переменных которые ссылаются на post и comment сервисы, 
+        # Например (ENV POST_SERVICE_HOST post) но эти имена теперь у нас задаются динамически в зависимости от имени чарта.      
+        # Поэтому мы должны переопределить эти переменные:        
+        - name: POST_SERVICE_HOST
+          value: {{  .Values.postHost | default (printf "%s-post" .Release.Name) }}
+          # Для чисел и булевых значений необходимо добавлять функцию добавления кавычек | quote  
+        - name: POST_SERVICE_PORT
+          value: {{  .Values.postPort | default "5000" | quote }}
+        - name: COMMENT_SERVICE_HOST
+          value: {{  .Values.commentHost | default (printf "%s-comment" .Release.Name) }}
+        - name: COMMENT_SERVICE_PORT
+          value: {{  .Values.commentPort | default "9292" | quote }}
+        # в данном примере переменная окружения ENV будет содержать значение равное названию пространства имен,
+        # в котором находится данный Pod. Например, если этот Pod находится в пространстве имен dev, 
+        # то значение переменной окружения ENV будет равно dev.          
+        - name: ENV
+```
+{{ .Values.commentPort | default "9292" | quote }} <br/>
+<span style="color:red"> !!Обратите внимание на функцию добавления кавычек. Для чисел и булевых значений это важно </span>
+
+Добавим в ui/values.yaml
+```yaml
+postHost:
+postPort:
+commentHost:
+commentPort:
+```
+Можете даже закоментировать эти параметры или оставить пустыми. Главное, чтобы они были в конфигурации Chart’а в качестве документации
+
+Вы можете задавать теперь переменные для зависимостей прямо в values.yaml самого Chart’а reddit. Они перезаписывают значения переменных из зависимых чартов
+
+reddit/values.yaml
+```yaml
+---
+# Переменные в этом файле будут иметь более высокий приоритет чем переменные заданные непосредственно в зависимых чартах (comment, ui, post)
+comment: 
+  service:
+    externalPort: 9292
+  image:
+    repository: vasiliybasov/comment
+    tag: latest
+
+post:
+  service:
+    externalPort: 5000
+  image:
+    repository: vasiliybasov/post
+    tag: latest
+
+ui:
+  service:
+    externalPort: 9292
+  image:
+    repository: vasiliybasov/ui
+    tag: latest
+```
+
+После обновления UI - нужно обновить зависимости чарта reddit.
+```bash
+helm dep update ./reddit
+```
+
+Обновите релиз, установленный в k8s
+```bash
+helm upgrade --install reddit-test ./reddit
+```
+Cнова приложение в браузере, все должно работать
+
+# GitLab + Kubernetes
+
+Ставим GKE-кластер + Gitlab CI с помощью терраформ
+
+/microservices/kubernetes/terraform
+```bash
+terraform apply
+```
+Здесь мы пользовались ресурсами
+- 1. Нам необходимо зарегистрировать собственный домен (Например на godaddy) и подключить его к Cloud DNS Google
+https://www.youtube.com/watch?v=1lsFYHtWbEc&t=19s
+
+Далее устанавливаем Gitlab
+https://www.youtube.com/watch?v=XcJqIggsJ5E
+
+Но делаем немного по своему используя свой ingress controller nginx
+```bash
+helm repo add gitlab https://charts.gitlab.io/
+helm repo update
+```
+
+```bash
+# Добавляем в Cloud DNS зону basov-world запись для нашего Gitlab сервера.
+resource "google_dns_record_set" "gitlab_basov_world" {
+  name        = "*.gitlab.basov.world."
+  type        = "A"
+  ttl         = 300
+  managed_zone = "basov-world"
+  rrdatas     = [google_compute_address.gitlab_ip.address]
+}
+
+resource "null_resource" "get-credentials" {
+
+  depends_on = [google_container_cluster.dev-cluster]  
+  provisioner "local-exec" {
+    command = <<-EOT
+              gcloud container clusters get-credentials ${google_container_cluster.dev-cluster.name} --zone ${var.zone} --project ${var.project}
+              helm upgrade --install ingress-nginx ingress-nginx --repo https://kubernetes.github.io/ingress-nginx --namespace ingress-nginx --create-namespace --set controller.service.loadBalancerIP=${google_compute_address.gitlab_ip.address} --set tcp.22="gitlab/gitlab-gitlab-shell:22"
+              helm upgrade --install gitlab gitlab/gitlab --timeout 600s --set global.hosts.domain=gitlab.basov.world --set global.hosts.externalIP=${google_compute_address.gitlab_ip.address} --set certmanager-issuer.email=baggurd@mail.ru --set global.edition=ce --set gitlab-runner.runners.privileged=true --set global.kas.enabled=true --set global.ingress.class=nginx --set nginx-ingress.enabled=false --create-namespace -n gitlab
+    EOT 
+  }
+}
+```
+
+https://docs.gitlab.com/charts/installation/command-line-options.html # - опции
+```bash
+helm upgrade --install gitlab gitlab/gitlab --timeout 600s \
+  --set global.hosts.domain=gitlab.basov.world \
+  --set global.hosts.externalIP=35.192.162.100 \
+  --set certmanager-issuer.email=baggurd@mail.ru \
+  --set global.edition=ce \
+  --set gitlab-runner.runners.privileged=true \
+  --set global.kas.enabled=true \
+  --set global.ingress.class=nginx \
+  --set nginx-ingress.enabled=false \
+  --create-namespace \
+  -n gitlab
+  ```
+
+  Получаем пароль от gitlab
+```bash
+kubectl get secrets -n gitlab | grep init
+kubectl get secret gitlab-gitlab-initial-root-password -ojsonpath='{.data.password}' -n gitlab | base64 --decode ; echo
+```
+
+Полезные команды
+```bash
+kubectl get pods -n gitlab -w
+kubectl get ingress -n gitlab
+kubectl get svc -n gitlab
+kubectl get deploy -n gitlab
+```
+Просмотреть проблемы с сертификатами GITLAB
+```bash
+kubectl describe certificate,order,challenge --all-namespaces
+```
+
+Let's Encrypt т.е. настройка certmanager-issuer.email=baggurd@mail.ru позволяет создать только 5 сертификатов в течении 7 суток.
+
+В GitLab создаем группу vasiliybasov public
+и в ней 4 проекта ui post comment reddit-deploy
+Клонируем проекты к себе в рабочий каталог gilab_ci
+```bash
+git clone https://gitlab.gitlab.basov.world/vasiliybasov/ui.git
+git clone https://gitlab.gitlab.basov.world/vasiliybasov/comment.git
+git clone https://gitlab.gitlab.basov.world/vasiliybasov/post.git
+git clone https://gitlab.gitlab.basov.world/vasiliybasov/reddit-deploy.git reddit
+```
+Копируем все файлы из папки src в соответствующие каталоги ui post comment
+И Закоммитим и отправим в gitlab эти проекты
+Перенести содержимое директории Charts в Gitlab_ci/reddit
+
+Добавьте 2 переменные по этому пути в variables https://gitlab.gitlab.basov.world/groups/vasiliybasov/-/settings/ci_cd
+- CI_REGISTRY_USER - логин в dockerhub 
+- CI_REGISTRY_PASSWORD - пароль от Docker Hub
+
+
+## Kubernetes Agent
+Ставим Kubernetes Agent для этого помещаем в папку проекта ui следующую структуру
+```bash
+.gitlab
+└── agents
+    └── primary-agent
+        └── config.yaml
+```
+
+config.yaml
+```yaml
+ci_access:
+  projects:
+    - id: vasiliybasov/ui
+```
+
+В Gitlab Идем по пути ui - Infrastructure - Kubernetes clusters - connect a cluster - выбираем созданного нами агента - register
+
+Запускаем helm chart для инсталляции
+
+Что то вроде этого но с другим токеном
+```bash
+helm upgrade --install primary-agent gitlab/gitlab-agent \
+    --set image.tag=v15.9.0 \
+    --set config.token=3KEczovDUMBU9a8sxNZ9hh3_Fp8R_Y1pP48dZy2smdJkTDGECQ \
+    --set config.kasAddress=wss://kas.gitlab.basov.world \
+    --namespace gitlab-agent-primary-agent \
+    --create-namespace
+```
+
+Аналогично делаем для других проектов но при инсталяции agent-а меняем имя namespace на другое
+
+## **Настроим CI**
+см. файлы /microservices/kubernetes/gitlab_ci/ui/.gitlab-ci.yml
+
+Требуемые операции вызываются в блоках script:
+```yaml
+  script:
+    - build
+```
+
+Описание самих операций производится в виде bash-функций в блоке .auto_devops
+```yaml
+# Блок начинающийся с точки (.) представляет собой способ ссылаться на группу элементов конфигурации и повторно использовать их в других местах.
+# Чтобы повторно использовать этот блок мы должны его вызвать с помощью * перед именем "*docker_devops"
+.auto_devops: &auto_devops |
+
+  function build() {
+    ...
+  }
+  function install_dependencies() {
+    ...
+  }
+...
+default:
+  # interruptible если true то задание будет отменено когда запускается новый pipeline до завершения данного задания.
+  interruptible: false
+  # Образ по-умолчанию в котором все будет запускаться (Образ берется из DockerHub)
+  image: alpine:latest
+  # Блок команд который будет выполнен перед запуском любого задания (job)
+  before_script:
+    # Здесь (с помощью *) мы определяем что все команды блока .auto_devops: &auto_devops | будут включены в before_script
+    - *auto_devops
+
+```
+
+Проверяем что после push сборки образов проходят успешно и образы появляются в dockerhub
+
+Дадим возможность разработчику запускать отдельное окружение в Kubernetes по коммиту в feature-бранч.
+Немного обновим конфиг ингресса для сервиса UI:
+reddit/ui/templates/ingress.yml
+```yaml
+---
+# Когда мы создаем ingress то GKE Ingress controller создается и конфигурируется на external HTTP(S) load balancer (по-умолчанию)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ template "ui.fullname" . }}
+  # это блок метаданных (metadata) для Kubernetes-объекта, который позволяет хранить произвольные пары "ключ-значение" в виде аннотаций
+  # Например, в Ingress-объекте аннотации могут использоваться для настройки поведения Ingress-контроллера, который обрабатывает HTTP-запросы и маршрутизирует их на соответствующие сервисы в Kubernetes-кластере.
+  # annotations:
+    # Подключаем статический ip который мы создали ранее:
+    # kubernetes.io/ingress.global-static-ip-name: dev-cluster-gitlab
+    # If the class annotation is not specified it defaults to "gce".
+    # kubernetes.io/ingress.class: {{ .Values.ingress.class }}
+    # # Перенаправляет все http запросы на https, также требует, чтобы на сервере был установлен SSL-сертификат и ключ, даже если само соединение использует HTTP-протокол. Если сервер не настроен с SSL-сертификатом и ключом, то запросы будут отвергнуты с ошибкой.    
+    # nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # # изменяет путь запроса на /, что означает, что он будет передан целевому сервису без изменений. Таким образом, в приложении можно настроить обработку запросов, которые пришли на конкретный путь, например /api/v1 или /dashboard, и все запросы будут корректно переданы соответствующему сервису внутри кластера Kubernetes.
+    # nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  # tls:
+  # - secretName: ui-ingress
+  # здесь мы определяем правила маршрутизации для входящих запросов.
+  rules:
+  # Указываем hostname. Когда приходит запрос на сервер, он содержит имя хоста (или IP-адрес), к которому он адресован. Ingress использует это имя хоста для определения, какому сервису следует маршрутизировать запрос.
+  # Если же запрос адресован другому хосту, то он не будет соответствовать этому Ingress правилу и, следовательно, не будет маршрутизироваться на этот сервис.
+  # .Release.Name это имя релиза которое мы устанавливаем (или оно назначается автоматически если мы его не указываем) когда запускаем команду helm install
+  - host: {{ .Values.ingress.host | default .Release.Name }}
+  # мы указываем, что будем маршрутизировать запросы по HTTP протоколу.
+    http:
+      # здесь мы определяем пути, которые будут маршрутизироваться.
+      paths:
+      # мы определяем, что будем маршрутизировать запросы с корневого пути.
+      - path: /
+        # это указывает, что мы будем использовать префиксное сопоставление для маршрутизации запросов. 
+        # То есть любой запрос, который начинается с указанного пути, будет считаться соответствующим.
+        pathType: Prefix
+        # здесь мы определяем, какой сервис будет обрабатывать запросы, соответствующие указанному пути.
+        backend:
+          # мы указываем, что будем использовать сервис для обработки запросов.
+          service:
+            # мы указываем имя сервиса, который будет обрабатывать запросы.
+            name: {{ template "ui.fullname" . }}
+            # Порт на который будет посылаться трафик на сервис NodePort (прописан в ui-service.yml)
+            port:
+              number: {{ .Values.service.externalPort }}
+  ingressClassName: {{ .Values.ingress.class }}
+```
+
+Обновим конфиг ингресса для сервиса UI:
+reddit/ui/templates/values.yml
+```yaml
+---
+service:
+  internalPort: 9292
+  externalPort: 9292
+
+image:
+  repository: vasiliybasov/ui
+  tag: latest
+
+ingress:
+  class: nginx
+  # host: "{{ .Release.Name }}.gitlab.basov.world"
+
+postHost:
+postPort:
+commentHost:
+commentPort:
+```
+
+Создайте новый бранч в репозитории ui feature/3
+Закоммитьте и запушьте изменения
+
+Отметим, что мы добавили стадию review, запускающую
+приложение в k8s по коммиту в feature-бранчи (не master).
+
+Мы добавили функцию deploy, которая загружает Chart из репозитория reddit-deploy и делает релиз в неймспейсе review с образом приложения, собранным на стадии build.
+```bash
+  function deploy() {
+    # Если вызываем функцию с аргументом то переменная track будет равна этому первому аргументу если аргумента нет то будет равна stable
+    track="${1-stable}"
+    # Переменная окружения $CI_ENVIRONMENT_SLUG равна тому что указано в environment.name т.е. равна review/ИмяГруппы/ИмяПроекта/branch or tag name
+    name="$CI_ENVIRONMENT_SLUG"
+
+    #  Если track не равно stable тогда name = $name-$track
+    if [[ "$track" != "stable" ]]; then
+      name="$name-$track"
+    fi
+
+    # $CI_PROJECT_NAMESPACE - username or group name of the job в нашем случае это vasiliybasov
+    echo "Clone deploy repository..."
+    echo "$CI_PROJECT_NAMESPACE"
+    git clone https://gitlab.gitlab.basov.world/$CI_PROJECT_NAMESPACE/reddit-deploy.git
+
+    # Обновляем Чарты если они изменились
+    echo "Download helm dependencies..."
+    helm dep update reddit-deploy/reddit
+
+    # $KUBE_NAMESPACE Задается выше в блоке variables.KUBE_NAMESPACE
+    # Этот ID $CI_PIPELINE_ID уникальный для всех проектов с Gitlab instance
+    # reddit-deploy/reddit/ это каталог
+    # CI_PROJECT_NAME The name of the directory for the project. For example if the project URL is gitlab.example.com/group-name/project-1, CI_PROJECT_NAME is project-1. в нашем случае это ui
+    echo "Deploy helm release $name to $KUBE_NAMESPACE"
+    echo "$host"
+    echo "$CI_PROJECT_NAME"
+    echo "$CI_APPLICATION_TAG"
+    echo "$CI_PIPELINE_ID-$CI_JOB_ID"
+    helm upgrade --install \
+      --wait \
+      --set ui.ingress.host="$host" \
+      --set $CI_PROJECT_NAME.image.tag=$CI_APPLICATION_TAG \
+      --namespace="$KUBE_NAMESPACE" \
+      --version="$CI_PIPELINE_ID-$CI_JOB_ID" \
+      "$name" \
+      reddit-deploy/reddit/
+  }
+```
+
+Можем увидеть какие релизы запущены
+```bash
+helm ls -A
+```
+
+Созданные для таких целей окружения требуется “убивать”, когда они больше не нужны.
+```yaml
+stop_review:
+  stage: cleanup
+  variables:
+    GIT_STRATEGY: none
+    KUBE_NAMESPACE: review
+  script:
+    - install_dependencies
+    - kubectl config get-contexts
+    - kubectl config use-context $CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME:primary-agent
+    - kubectl get pods
+    - delete
+  environment:
+    name: review/$CI_PROJECT_PATH/$CI_COMMIT_REF_NAME
+    action: stop
+  when: manual
+  allow_failure: true
+  only:
+    refs:
+      - branches
+  #  kubernetes: active
+  except:
+    - main
+```
+
+Добавьте также
+```yaml
+stages:
+  - build
+  - review
+  - release
+  - cleanup
+
+review:
+  stage: review
+...
+  environment:
+    name: review/$CI_PROJECT_PATH/$CI_COMMIT_REF_NAME
+    url: https://$host
+    on_stop: stop_review
+...
+```
+Добавьте функцию удаления окружения
+```bash
+  function delete() {
+    track="${1-stable}"
+    name="$CI_ENVIRONMENT_SLUG"
+    echo "$name"
+    echo "$KUBE_NAMESPACE"
+    helm uninstall "$name" --namespace="$KUBE_NAMESPACE"
+  }
+```
+Запуште изменения в Git
+зайдите в Pipelines ветки feature/3
+
+Если все прошло нормально разработчик будет попадать на сайт через deployments - environments и там же сможет удалить тестовое окружение.
+
+Скопировать полученный файл .gitlab-ci.yml для ui в
+репозитории для post и comment. Проверить, что динамическое создание и удаление окружений работает и с ними как ожидалось
+
+## Staging Production
+Теперь создадим staging и production среды для работы приложения
+
+Создайте файл reddit/.gitlab-ci.yml
+
+Запуште в репозиторий reddit-deploy ветку main
+Этот файл отличается от предыдущих тем, что:
+1. Не собирает docker-образы
+2. Деплоит на статичные окружения (staging и production)
+3. Не удаляет окружения
+
+Удостоверьтесь, что staging успешно завершен <br/>
+В Environments найдите staging <br/>
+Приложение работает! <br/>
+Выкатываем на Production: <br/>
+И ждем, пока пайплай пройдет <br/>
+

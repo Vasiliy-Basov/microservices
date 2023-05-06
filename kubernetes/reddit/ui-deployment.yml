@@ -27,10 +27,17 @@ spec:
       containers:
       - image: vasiliybasov/ui:latest
         name: ui
+        ports:
+        - containerPort: 9292
+          name: ui
+          protocol: TCP        
         env:
+        # в данном примере переменная окружения ENV будет содержать значение равное названию пространства имен,
+        # в котором находится данный Pod. Например, если этот Pod находится в пространстве имен dev, 
+        # то значение переменной окружения ENV будет равно dev.
         - name: ENV
           valueFrom:
             fieldRef:
-              fieldPath: metadata.namespace        
+              fieldPath: metadata.namespace # metadata.namespace - это название пространства имен, в котором находится текущий ресурс Kubernetes.       
       imagePullSecrets:
       - name: regcred

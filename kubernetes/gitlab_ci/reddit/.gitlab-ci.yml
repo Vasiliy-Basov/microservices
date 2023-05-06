@@ -1,0 +1,148 @@
+stages:
+  - test
+  - staging
+  - production
+
+# Ничего не делает выходит с кодом 0
+test:
+  stage: test
+  script:
+    - exit 0
+  only:
+    - triggers
+    - branches
+
+staging:
+  stage: staging
+  script:
+    - install_dependencies
+    - kubectl config get-contexts
+    - kubectl config use-context $CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME:primary-agent
+    - kubectl get pods  
+    - ensure_namespace
+    - deploy
+  variables:
+    KUBE_NAMESPACE: staging
+    host: staging.gitlab.basov.world
+  environment:
+    name: staging
+    url: https://$host
+  only:
+    refs:
+      - main
+#    kubernetes: active
+
+production:
+  stage: production
+  script:
+    - install_dependencies
+    - kubectl config get-contexts
+    - kubectl config use-context $CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME:primary-agent
+    - kubectl get pods  
+    - ensure_namespace
+    - deploy
+  variables:
+    KUBE_NAMESPACE: production
+    host: production.gitlab.basov.world
+  environment:
+    name: production
+    url: https://$host
+  when: manual
+  only:
+    refs:
+      - main
+#    kubernetes: active
+
+.auto_devops: &auto_devops |
+  # Auto DevOps variables and functions
+  # Если переменная TRACE определена (т.е. ее значение не равно пустой строке) то set -x будет выполнена, и режим трассировки будет включен. 
+  # Это означает, что перед выполнением каждой команды, команда и ее аргументы выводятся на экран для отслеживания выполнения скрипта.
+  # Кроме того, set -x также включает расширенный режим сообщений об ошибках (errexit), который прерывает выполнение скрипта при обнаружении ошибок в командах.
+  [[ "$TRACE" ]] && set -x
+  export CI_REGISTRY="docker.io"
+  # $CI_PROJECT_PATH это предопределенная переменная окружения в формате ИмяГруппы/ИмяПроекта
+  export CI_APPLICATION_REPOSITORY=$CI_REGISTRY/$CI_PROJECT_PATH
+  # $CI_COMMIT_REF_SLUG это имя branch или tag в формате переделанном для URLs, host names and domain names
+  export CI_APPLICATION_TAG=$CI_COMMIT_REF_SLUG
+  # Не до конца понял где эта переменная используется. CI_JOB_ID это встроенная переменная с уникальным для всех JOB-ов ID JOB 
+  export CI_CONTAINER_NAME=ci_job_build_${CI_JOB_ID}
+
+  function install_dependencies() {
+
+    # Ставим зависимости + glibc  
+    apk add -U openssl curl tar gzip bash ca-certificates git python3
+    wget -q -O /etc/apk/keys/sgerrand.rsa.pub https://alpine-pkgs.sgerrand.com/sgerrand.rsa.pub
+    wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.35-r1/glibc-2.35-r1.apk
+    apk add glibc-2.35-r1.apk
+    rm glibc-2.35-r1.apk
+
+    # ставим gsutil чтобы управлять командами GCP 
+    curl https://storage.googleapis.com/pub/gsutil.tar.gz | tar -xz -C $HOME
+    export PATH=${PATH}:$HOME/gsutil
+    
+    # Ставим helm последней версии
+    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
+    chmod +x get_helm.sh && ./get_helm.sh
+    helm version --client
+
+    # Эти команды загружают скрипт sync-repo.sh с репозитория GitHub, сохраняют его в /usr/bin/ и устанавливают права на выполнение для всех пользователей. 
+    # Этот скрипт используется для синхронизации локального репозитория Helm с удаленным хранилищем чартов Helm
+    curl  -o /usr/bin/sync-repo.sh https://raw.githubusercontent.com/kubernetes/helm/master/scripts/sync-repo.sh
+    chmod a+x /usr/bin/sync-repo.sh
+
+    # Загружаем и устанавливаем утилиту kubectl - официальный клиент командной строки для управления кластером Kubernetes.
+    curl -L -o /usr/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
+    chmod +x /usr/bin/kubectl
+    kubectl version --client
+  }
+
+  # Создаем пространство имен с именем $KUBE_NAMESPACE если оно не существует
+  function ensure_namespace() {
+    kubectl describe namespace "$KUBE_NAMESPACE" || kubectl create namespace "$KUBE_NAMESPACE"
+  }
+
+  function deploy() {
+    echo $KUBE_NAMESPACE
+    # Если вызываем функцию с аргументом то переменная track будет равна этому первому аргументу если аргумента нет то будет равна stable
+    track="${1-stable}"
+    # Переменная окружения $CI_ENVIRONMENT_SLUG равна либо production либо staging что указано в environment.name
+    name="$CI_ENVIRONMENT_SLUG"
+    # Загружаем все зависимости указанные в файле Charts.yml и помещаем в архивы tgz
+    helm dep build reddit
+
+    # for microservice in $(helm dep ls | grep "file://" | awk '{print $1}') ; do
+    #   SET_VERSION="$SET_VERSION \ --set $microservice.image.tag='$(curl http://gitlab-gitlab/$CI_PROJECT_NAMESPACE/ui/raw/master/VERSION)' "
+
+    # $KUBE_NAMESPACE Задается выше в блоке variables.KUBE_NAMESPACE
+    # Этот ID $CI_PIPELINE_ID уникальный для всех проектов с Gitlab instace
+    # $name Равна либо production либо staging что указано в environment.name
+    # reddit это каталог
+    helm upgrade --install \
+      --wait \
+      --set ui.ingress.host="$host" \
+      --set ui.image.tag="$(curl https://gitlab.gitlab.basov.world/$CI_PROJECT_NAMESPACE/ui/-/raw/main/VERSION)" \
+      --set post.image.tag="$(curl https://gitlab.gitlab.basov.world/$CI_PROJECT_NAMESPACE/post/-/raw/main/VERSION)" \
+      --set comment.image.tag="$(curl https://gitlab.gitlab.basov.world/$CI_PROJECT_NAMESPACE/comment/-/raw/main/VERSION)" \
+      --namespace="$KUBE_NAMESPACE" \
+      --version="$CI_PIPELINE_ID-$CI_JOB_ID" \
+      "$name" \
+      reddit
+  }
+
+  function delete() {
+    track="${1-stable}"
+    name="$CI_ENVIRONMENT_SLUG"
+    echo "$name"
+    echo "$KUBE_NAMESPACE"
+    helm uninstall "$name" --namespace="$KUBE_NAMESPACE"
+  }
+
+default:
+  # interruptible если true то задание будет отменено когда запускается новый pipeline до завершения данного задания.
+  interruptible: false
+  # Образ по-умолчанию в котором все будет запускаться (Образ берется из DockerHub)
+  image: alpine:latest
+  # Блок команд который будет выполнен перед запуском любого задания (job)
+  before_script:
+    # Здесь (с помощью *) мы определяем что все команды блока .auto_devops: &auto_devops | будут включены в before_script
+    - *auto_devops

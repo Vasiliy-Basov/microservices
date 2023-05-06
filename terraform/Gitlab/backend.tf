@@ -1,7 +1,7 @@
 # Указываем путь где мы будем хранить наш stage file
 terraform {
   backend "gcs" {
-    bucket = "prod-bucket-f1b000bd21bd4bbf" # имя нашего bucket
+    bucket = "kub-bucket-bd3cf29fda5e855a" # имя нашего bucket
     prefix = "gitlab"
   }
 }

@@ -8,7 +8,15 @@
 		},
 		{
 			"path": "../gitlab/example"
+		},
+		{
+			"path": "../gitlab_ci"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"editor.tokenColorCustomizations": {
+			"comments": "",
+			"textMateRules": []
+		}
+	}
 }

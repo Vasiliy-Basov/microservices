@@ -1,0 +1,59 @@
+# Подключение к кластеру
+gcloud container clusters get-credentials dev-cluster --zone us-central1-c
+
+
+helm repo add gitlab https://charts.gitlab.io/
+helm repo update
+
+https://docs.gitlab.com/charts/installation/command-line-options.html # - опции
+
+helm upgrade --install gitlab gitlab/gitlab --timeout 600s \
+  --set global.hosts.domain=gitlab.basov.world \
+  --set global.hosts.externalIP=35.192.162.100 \
+  --set certmanager-issuer.email=baggurd@mail.ru \
+  --set global.edition=ce \
+  --set gitlab-runner.runners.privileged=true \
+  --set global.kas.enabled=true \
+  --set global.ingress.class=nginx \
+  --set nginx-ingress.enabled=false \
+  --create-namespace \
+  -n gitlab
+
+# Получаем пароль
+kubectl get secrets -n gitlab | grep init
+kubectl get secret gitlab-gitlab-initial-root-password -ojsonpath='{.data.password}' -n gitlab | base64 --decode ; echo
+
+kubectl get pods -n gitlab -w
+
+kubectl get ingress -n gitlab
+kubectl get svc -n gitlab
+kubectl get deploy -n gitlab
+
+# Просмотреть проблемы с сертификатами GITLAB
+kubectl describe certificate,order,challenge --all-namespaces
+
+# Let's Encrypt т.е. настройка certmanager-issuer.email=baggurd@mail.ru позволяет создать только 5 сертификатов в течении 7 суток.
+
+# Токен мы получаем когда заходим в project - Infrastructure Kubernetes clusters = connect a cluster
+# Tokent agent
+# q-Lr8gXZdKSNVHmRTbWs4W2PmHtdr9_zoNgz9_B9k3Nk_9TCdA   8HmyBdMMkSzDAcVWx8vMiaHYhfQwSVPzfg8ceoPPvx9-Coc42w
+
+helm upgrade --install primary-agent gitlab/gitlab-agent \
+    --set image.tag=v15.9.0 \
+    --set config.token=3KEczovDUMBU9a8sxNZ9hh3_Fp8R_Y1pP48dZy2smdJkTDGECQ \
+    --set config.kasAddress=wss://kas.gitlab.basov.world \
+    --namespace gitlab
+
+helm upgrade --install --wait --create-namespace --namespace reddittest reddit reddit/
+helm upgrade --install --wait  --set ui.ingress.host="vasiliybasov.gitlab.basov.world" --set ui.image.tag=test01 --create-namespace --namespace reddittest reddit reddit/reddit/
+helm dep update reddit/reddit
+
+
+helm uninstall --namespace reddittest reddit
+
+# Обновление зависимостей чарта
+helm dep update ./reddit
+
+# Удаление установлкного манифеста
+kubectl delete -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.7.0/deploy/static/provider/cloud/deploy.yaml
+
