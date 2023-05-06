@@ -1,9 +1,0 @@
----
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: {{ .Release.Name }}-fast
-# provisioner: kubernetes.io/gce-pd - это параметр, указывающий на используемый провайдер хранилища, который в данном случае является GCE Persistent Disk (GCP PD).
-provisioner: kubernetes.io/gce-pd
-parameters:
-  type: pd-ssd # Тип предоставляемого хранилища

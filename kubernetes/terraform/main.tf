@@ -69,7 +69,7 @@ resource "google_container_node_pool" "primary_nodes" {
   }
 }
 
-# Добавляем в  Cloud DNS зону basov-world запись для нашего Gitlab сервера.
+# Добавляем в Cloud DNS зону basov-world запись для нашего Gitlab сервера.
 resource "google_dns_record_set" "gitlab_basov_world" {
   name        = "*.gitlab.basov.world."
   type        = "A"
@@ -78,7 +78,6 @@ resource "google_dns_record_set" "gitlab_basov_world" {
   rrdatas     = [google_compute_address.gitlab_ip.address]
 }
 
-# Добавляем namespace для gitlab
 resource "null_resource" "get-credentials" {
 
   depends_on = [google_container_cluster.dev-cluster]  

@@ -1,9 +1,0 @@
----
-apiVersion: v2
-name: mongodb
-version: 1.0.0
-description: MongoDB 4.0-xenial
-maintainers:
-  - name: VasiliyBasov
-    email: vasiliy.basov.82@gmail.com
-appVersion: "4.0"

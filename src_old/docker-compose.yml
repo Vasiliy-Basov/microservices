@@ -1,0 +1,73 @@
+version: '3.3'
+services:
+  post_db:
+    # Use MongoDB image with version specified in MONGODB_VERSION env variable
+    image: mongo:${MONGODB_VERSION}
+    # Use existing volume named reddit_db, этот volume мы создавали раньше
+    volumes:
+      - reddit_db:/data/db
+    # Connect to back_net network and give container the aliases post_db and comment_db  
+    networks:
+      back_net:
+        aliases:
+          - post_db
+          - comment_db
+  post:
+  # Build the image from Dockerfile in the post-py directory
+    build: ./post-py
+    # Set the image name to ${USERNAME}/post:${POST_VERSION}
+    image: ${USERNAME}/post:${POST_VERSION}
+    # Connect to back_net network and give container the alias post
+    networks:
+      back_net:
+        aliases:
+          - post
+      # Connect to front_net network and give container the alias post    
+      front_net:
+        aliases:
+          - post        
+  comment:
+  # Build the image from Dockerfile in the comment directory
+    build: ./comment
+    image: ${USERNAME}/comment:${COMMENT_VERSION}
+    # Connect to back_net and front_net network with the alias comment
+    networks:
+      back_net:
+        aliases:
+          - comment
+      front_net:
+        aliases:
+          - comment  
+  ui:
+    # Build the image from Dockerfile in the ui directory
+    build: ./ui
+    # Set the image name to ${USERNAME}/ui:${POST_VERSION}
+    image: ${USERNAME}/ui:${POST_VERSION}
+    # Expose port ${UI_PORT} and map it to the container's 9292/tcp port
+    ports:
+      - ${UI_PORT}:9292/tcp
+    # Connect to front_net network
+    networks:
+      - front_net
+
+volumes:
+  reddit_db:
+    # Declare reddit_db as external volume означает то что он у нас уже существует а не создается новый
+    external: true
+    name: reddit_db
+
+networks:
+  back_net:
+    # Use bridge driver for back_net network
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.0.2.0/24
+  front_net:
+    # Use bridge driver for front_net network
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.0.1.0/24

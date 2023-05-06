@@ -1,9 +1,0 @@
----
-apiVersion: v2
-name: post
-version: 1.0.0
-description: OTUS reddit application POST
-maintainers:
-  - name: VasiliyBasov
-    email: vasiliy.basov.82@gmail.com
-appVersion: "1.0"

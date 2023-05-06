@@ -1,0 +1,30 @@
+version: '3.3'
+
+services:
+  ui:
+    # инструкция command переопределяет CMD, указанное в Dockerfile;
+    # для каждого каталога с приложением создан отдельный volume.
+    # puma --debug -w 2 запускает сервер в режиме отладки с двумя воркерами.
+    # docker compose logs -f ui - просмотр дебага
+    command: puma --debug -w 2
+    volumes:
+    # Примонтируйте volume к каталогу /app внутри контейнера ui.
+    # Это позволяет изменять код приложения на локальной машине и немедленно видеть эти изменения внутри запущенного контейнера
+    # Путь до volume смотрим - docker volume inspect test_app_ui 
+      - app_ui:/app
+
+  post:
+    volumes:
+    # Примонтируйте volume к каталогу /app внутри контейнера post.
+      - app_post:/app
+
+  comment:
+    command: puma --debug -w 2
+    volumes:
+    # Примонтируйте volume к каталогу /app внутри контейнера comment.
+      - app_comment:/app
+
+volumes:
+  app_ui:
+  app_comment:
+  app_post:
