@@ -16,7 +16,7 @@ variable "zone" {
   default     = "us-central1-c"
 }
 
-variable "initial_node_count" {
+variable "node_count" {
   description = "Initial node count"
   default     = 2
 }

@@ -57,3 +57,5 @@ helm dep update ./reddit
 # Удаление установлкного манифеста
 kubectl delete -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.7.0/deploy/static/provider/cloud/deploy.yaml
 
+# install prometheus
+helm upgrade --install --wait -f custom_values.yaml prometheus prometheus-community/prometheus

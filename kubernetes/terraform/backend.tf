@@ -1,7 +1,7 @@
 # Указываем путь где мы будем хранить наш stage file
 terraform {
   backend "gcs" {
-    bucket = "kub-bucket-bd3cf29fda5e855a" # имя нашего bucket
+    bucket = "micro-bucket-258b7b2f0f950e70" # имя нашего bucket
     prefix = "kuberbetes"
   }
 }

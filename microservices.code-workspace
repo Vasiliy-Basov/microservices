@@ -11,6 +11,9 @@
 		},
 		{
 			"path": "../gitlab_ci"
+		},
+		{
+			"path": "../Hugo"
 		}
 	],
 	"settings": {

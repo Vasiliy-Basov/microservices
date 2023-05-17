@@ -19,11 +19,11 @@ resource "random_id" "bucket_prefix" {
 }
 
 resource "google_storage_bucket" "default" {
-  name          = "kub-bucket-${random_id.bucket_prefix.hex}"
+  name          = "micro-bucket-${random_id.bucket_prefix.hex}"
   force_destroy = false      # не даст удалить bucket пока не удалим все внутренние объекты
   location      = "EU"       # https://cloud.google.com/storage/docs/locations
   storage_class = "STANDARD" # Supported values include: STANDARD, MULTI_REGIONAL, REGIONAL, NEARLINE, COLDLINE, ARCHIVE
-  project       = "docker-377610"
+  project       = var.project
   versioning { # При изменении объекта старые версии сохраняются
     enabled = true
   }

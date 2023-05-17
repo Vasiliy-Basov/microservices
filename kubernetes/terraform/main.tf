@@ -11,9 +11,9 @@ provider "google" {
   region  = var.region
 }
 
-# Создаем ip address для gitlab
-resource "google_compute_address" "gitlab_ip" {
-  name   = "dev-cluster-gitlab"
+# Создаем ip address для ingress контроллера
+resource "google_compute_address" "ingress_cluster_ip" {
+  name   = "ingress-cluster-ip"
   region = var.region
   project = var.project
 }
@@ -56,7 +56,7 @@ resource "google_container_node_pool" "primary_nodes" {
   name       = "my-node-pool"
   location   = var.zone
   cluster    = google_container_cluster.dev-cluster.id
-  node_count = 3
+  node_count = var.node_count
 
   node_config {
     machine_type = "n2-standard-2"
@@ -71,11 +71,11 @@ resource "google_container_node_pool" "primary_nodes" {
 
 # Добавляем в Cloud DNS зону basov-world запись для нашего Gitlab сервера.
 resource "google_dns_record_set" "gitlab_basov_world" {
-  name        = "*.gitlab.basov.world."
+  name        = "*.cluster.basov.world."
   type        = "A"
   ttl         = 300
   managed_zone = "basov-world"
-  rrdatas     = [google_compute_address.gitlab_ip.address]
+  rrdatas     = [google_compute_address.ingress_cluster_ip.address]
 }
 
 resource "null_resource" "get-credentials" {
@@ -84,8 +84,8 @@ resource "null_resource" "get-credentials" {
   provisioner "local-exec" {
     command = <<-EOT
               gcloud container clusters get-credentials ${google_container_cluster.dev-cluster.name} --zone ${var.zone} --project ${var.project}
-              helm upgrade --install ingress-nginx ingress-nginx --repo https://kubernetes.github.io/ingress-nginx --namespace ingress-nginx --create-namespace --set controller.service.loadBalancerIP=${google_compute_address.gitlab_ip.address} --set tcp.22="gitlab/gitlab-gitlab-shell:22"
-              helm upgrade --install gitlab gitlab/gitlab --timeout 600s --set global.hosts.domain=gitlab.basov.world --set global.hosts.externalIP=${google_compute_address.gitlab_ip.address} --set certmanager-issuer.email=baggurd@mail.ru --set global.edition=ce --set gitlab-runner.runners.privileged=true --set global.kas.enabled=true --set global.ingress.class=nginx --set nginx-ingress.enabled=false --create-namespace -n gitlab
+              helm upgrade --install ingress-nginx ingress-nginx --repo https://kubernetes.github.io/ingress-nginx --namespace ingress-nginx --create-namespace --set controller.service.loadBalancerIP=${google_compute_address.ingress_cluster_ip.address} --set tcp.22="gitlab/gitlab-gitlab-shell:22"
+              # helm upgrade --install gitlab gitlab/gitlab --timeout 600s --set global.hosts.domain=cluster.basov.world --set global.hosts.externalIP=${google_compute_address.ingress_cluster_ip.address} --set certmanager-issuer.email=baggurd@mail.ru --set global.edition=ce --set gitlab-runner.runners.privileged=true --set global.kas.enabled=true --set global.ingress.class=nginx --set nginx-ingress.enabled=false --create-namespace -n gitlab
     EOT 
   }
 }
