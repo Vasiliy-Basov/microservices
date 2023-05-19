@@ -58,4 +58,7 @@ helm dep update ./reddit
 kubectl delete -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.7.0/deploy/static/provider/cloud/deploy.yaml
 
 # install prometheus
-helm upgrade --install --wait -f custom_values.yaml prometheus prometheus-community/prometheus
+helm upgrade --install --wait -f ../charts/prometheus/custom_values.yaml prometheus prometheus-community/prometheus --create-namespace --namespace prometheus
+helm upgrade --install --wait reddit-test ../charts/reddit
+helm upgrade --install --wait production --namespace production --create-namespace ./reddit
+helm upgrade --install --wait staging --namespace staging --create-namespace ./reddit

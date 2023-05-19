@@ -20,3 +20,7 @@
 #   image:
 #     repository: vasiliybasov/ui
 #     tag: latest
+ui:
+  ingress:
+    class: nginx
+    host: cluster.basov.world

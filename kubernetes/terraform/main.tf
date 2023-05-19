@@ -85,6 +85,7 @@ resource "null_resource" "get-credentials" {
     command = <<-EOT
               gcloud container clusters get-credentials ${google_container_cluster.dev-cluster.name} --zone ${var.zone} --project ${var.project}
               helm upgrade --install ingress-nginx ingress-nginx --repo https://kubernetes.github.io/ingress-nginx --namespace ingress-nginx --create-namespace --set controller.service.loadBalancerIP=${google_compute_address.ingress_cluster_ip.address} --set tcp.22="gitlab/gitlab-gitlab-shell:22"
+              helm upgrade --install --wait -f ../charts/prometheus/custom_values.yaml prometheus prometheus-community/prometheus --create-namespace --namespace prometheus
               # helm upgrade --install gitlab gitlab/gitlab --timeout 600s --set global.hosts.domain=cluster.basov.world --set global.hosts.externalIP=${google_compute_address.ingress_cluster_ip.address} --set certmanager-issuer.email=baggurd@mail.ru --set global.edition=ce --set gitlab-runner.runners.privileged=true --set global.kas.enabled=true --set global.ingress.class=nginx --set nginx-ingress.enabled=false --create-namespace -n gitlab
     EOT 
   }
