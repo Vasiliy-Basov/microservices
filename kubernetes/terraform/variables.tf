@@ -1,7 +1,7 @@
 variable "project" {
   # Описание переменной
   description = "Project ID"
-  default = "docker-377610"
+  default = "micro-386716"
 }
 
 variable "region" {
