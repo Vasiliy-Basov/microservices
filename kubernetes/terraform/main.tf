@@ -85,13 +85,15 @@ resource "null_resource" "get-credentials" {
     command = <<-EOT
               gcloud container clusters get-credentials ${google_container_cluster.dev-cluster.name} --zone ${var.zone} --project ${var.project}
               helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+              helm repo add grafana https://grafana.github.io/helm-charts
               helm repo update
               helm upgrade --install ingress-nginx ingress-nginx --repo https://kubernetes.github.io/ingress-nginx --namespace ingress-nginx --create-namespace --set controller.service.loadBalancerIP=${google_compute_address.ingress_cluster_ip.address} --set tcp.22="gitlab/gitlab-gitlab-shell:22"
               helm upgrade --install --wait reddit-test ../gitlab_ci/reddit/reddit
               helm upgrade --install --wait production --namespace production --create-namespace ../gitlab_ci/reddit/reddit
               helm upgrade --install --wait staging --namespace staging --create-namespace ../gitlab_ci/reddit/reddit
               helm upgrade --install --wait -f ../charts/prometheus/custom_values.yaml prometheus prometheus-community/prometheus --create-namespace --namespace prometheus
-              # helm upgrade --install gitlab gitlab/gitlab --timeout 600s --set global.hosts.domain=cluster.basov.world --set global.hosts.externalIP=${google_compute_address.ingress_cluster_ip.address} --set certmanager-issuer.email=baggurd@mail.ru --set global.edition=ce --set gitlab-runner.runners.privileged=true --set global.kas.enabled=true --set global.ingress.class=nginx --set nginx-ingress.enabled=false --create-namespace -n gitlab
+              helm upgrade --install --wait grafana grafana/grafana --set ingress.enabled=true --set ingress.ingressClassName=nginx --set ingress.hosts={grafana.cluster.basov.world} --values ../charts/grafana/grafana.yaml --create-namespace --namespace grafana
+              # helm upgrade --install gitlab gitlab/gitlab --timeout 600s --set global.hosts.domain=cluster.basov.world --set global.hosts.externalIP=${google_compute_address.ingress_cluster_ip.address} --set certmanager-issuer.email=baggurd@mail.ru --set global.edition=ce --set gitlab-runner.runners.privileged=true --set global.kas.enabled=true --set global.ingress.class=nginx --set nginx-ingress.enabled=false --create-namespace --namespace gitlab
     EOT 
   }
 }

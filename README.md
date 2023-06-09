@@ -4692,3 +4692,238 @@ review:
 Выкатываем на Production: <br/>
 И ждем, пока пайплай пройдет <br/>
 
+# 29 Kubernetes.Мониторинг и логирование
+
+Ставим prometheus и grafana и наши приложения
+```bash
+gcloud container clusters get-credentials ${google_container_cluster.dev-cluster.name} --zone ${var.zone} --project ${var.project}
+
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+helm upgrade --install ingress-nginx ingress-nginx --repo https://kubernetes.github.io/ingress-nginx --namespace ingress-nginx --create-namespace --set controller.service.loadBalancerIP=${google_compute_address.ingress_cluster_ip.address} --set tcp.22="gitlab/gitlab-gitlab-shell:22"
+
+helm upgrade --install --wait reddit-test ../gitlab_ci/reddit/reddit
+helm upgrade --install --wait production --namespace production --create-namespace ../gitlab_ci/reddit/reddit
+
+helm upgrade --install --wait staging --namespace staging --create-namespace ../gitlab_ci/reddit/reddit
+
+helm upgrade --install --wait -f ../charts/prometheus/custom_values.yaml prometheus prometheus-community/prometheus --create-namespace --namespace prometheus
+
+helm upgrade --install --wait grafana grafana/grafana --set ingress.enabled=true --set ingress.ingressClassName=nginx --set ingress.hosts={grafana.cluster.basov.world} --values ../charts/grafana/grafana.yaml --create-namespace --namespace grafana
+```
+
+Настройки prometheus содержаться в файле /charts/prometheus/custom_values.yaml custom_values.yml
+
+Добавляем новые таргеты для сбора метрик
+```yaml
+# Если все правильно прописано jobs должны появится в Status - Targets
+      - job_name: 'ui-endpoints'
+        # Параметр, который указывает Prometheus использовать Kubernetes Service Discovery. Можем указывать "endpoints", "services", "pods" 
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          # создает новые метки на основе найденных совпадений в регулярном выражении regex
+          - action: labelmap
+            # регулярное выражение. ищет метки, начинающиеся с __meta_kubernetes_service_label_, за которыми следует любое значение (.+).
+            # __meta_kubernetes_service_label_- это предопределенные метки которые автоматически извлекаются из kubernetes при сборе данных
+            regex: __meta_kubernetes_service_label_(.+)
+            # оставляем (keep) только endpoints которые содержат метки component: ui (Метки прописываются например в deployment.yaml (metadata: labels:))
+            # Например если у сервиса в kubernetes есть метка component мы обращаемся к ней по: __meta_kubernetes_service_label_component
+          - source_labels: [__meta_kubernetes_service_label_component]
+            action: keep
+            regex: ui
+          # Переносим метку пространства имен __meta_kubernetes_namespace (namespace) в новую метку kubernetes_namespace т.е. если пространство имен my-namespace то будет создана новая метка kubernetes_namespace со значением my-namespace 
+          # Мы это делаем потому что метки вида __meta_* не публикуются. Поэтому создаем свои перенеся туда информацию. 
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: kubernetes_namespace
+          # __meta_kubernetes_service_name содержит имя сервиса Kubernetes, к которому относится цель мониторинга.
+          - source_labels: [__meta_kubernetes_service_name]
+            target_label: kubernetes_name
+
+      - job_name: 'comment-endpoints'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_service_label_component]
+            action: keep
+            regex: comment
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            target_label: kubernetes_name
+
+      - job_name: 'post-endpoints'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_service_label_component]
+            action: keep
+            regex: post
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            target_label: kubernetes_name
+
+      - job_name: 'reddit-production'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          # Означает что мы выбираем все endpoints с метками app: reddit которые находятся в namespace production или staging.
+          - source_labels: [__meta_kubernetes_service_label_app, __meta_kubernetes_namespace]
+            action: keep
+            regex: reddit;(production|staging)+
+          # Удаляем endpoint с меткой component: mongo (потому что с помощью service discovery собирается с ошибкой strconv.ParseFloat: parsing "looks": invalid syntax while parsing: "It looks")
+          - source_labels: [__meta_kubernetes_service_label_component]
+            action: drop
+            regex: mongo
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            target_label: kubernetes_name
+
+      - job_name: 'reddit-test'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          # Не собираем endpoint для namespace production|staging
+          - source_labels: [__meta_kubernetes_namespace]
+            action: drop
+            regex: (production|staging)+
+          - source_labels: [__meta_kubernetes_service_label_component]
+            action: drop
+            regex: mongo
+          - source_labels: [__meta_kubernetes_service_label_app, __meta_kubernetes_namespace]
+            action: keep
+            regex: reddit;.+
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            target_label: kubernetes_name
+```
+
+Все найденные на эндпоинтах метрики сразу же отобразятся в списке (вкладка Graph). Метрики Cadvisor начинаются с container_
+
+Для сбора информации о deployment и replicaset и т.д. нужно включить сервис kube-state-metrics в custom_values.yml
+
+в **Status - Targets** kubernetes-service-endpoints 
+
+в Graph
+начинается на **kube_**
+
+Также собираем метрики приложений см. custom_values.yml
+
+Добавим дашбоард Kubernetes cluster monitoring (via Prometheus)
+Нужно поменять синтаксис иначе он собирает не все метрики потому что изменились метки
+```
+sum (rate (container_cpu_usage_seconds_total{image!="",kubernetes_io_hostname=~"^$Node$"}[1m])) by (pod)
+```
+
+pod_name заменить на pod
+container_name на container
+убрать ,name=~"^k8s_.*"
+
+## Variables
+Добавляем фильтрацию по namspace. Чтобы можно было убрать часть графиков удаляя и добавляя namespace
+Заходим в дашбоард
+settings
+variables
+
+- Name - namespace
+- Label - Env
+- Data Source - Prometheus
+- Query Type - Label values
+- Label - kubernetes_namespace
+- Regex /.+/ -убираем пустой namespace
+- Галочки multi-value, include all option
+
+Меняем запрос метриуи чтобы фильтрация работала
+```
+ui_request_count{kubernetes_namespace=~"$namespace"}
+```
+В Dashboards появится список с названием Env, в котором будут доступны все namespace. Но графики пока не будут реагировать на выбор значения в этом списке.
+Примеры запросов к prometheus https://prometheus.io/docs/prometheus/latest/querying/examples/
+
+## Задание со *
+
+Запустить alertmanager в k8s и настроить правила для контроля за доступностью api-сервера и хостов k8s.
+
+В файле `kubernetes/Charts/prometheus/custom_values.yml`:
+
+- разрешаем alertmanager 
+
+  ```yaml
+  alertmanager:
+    enabled: true
+  ```
+
+- Делаем нотификацю в слак
+
+```yaml
+# alertmanager ConfigMap entries
+alertmanagerFiles:
+  alertmanager.yml: |-
+    global:
+      slack_api_url: 'https://hooks.slack.com/services/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'
+
+    route:
+      receiver: 'slack-notifications'
+
+    receivers:
+    - name: 'slack-notifications'
+      slack_configs:
+      - channel: '#123456'
+```
+
+- Указываем правила алертов
+
+  За не доступность хостов отвечает задание `kubernetes-nodes` (в этом же файле), эти метрики видны в prometheus.
+
+  ```yaml
+  serverFiles:
+    alerts:
+      groups:
+      - name: Instances
+        rules:
+        - alert: InstanceDown
+        ...
+  ```
+
+  За не доступность apiservers отвечает задание `kubernetes-apiservers` (в этом же файле), эти метрики видны в prometheus.
+
+  ```yaml
+  serverFiles:
+    alerts:
+      groups:
+      - name: Instances
+      ...
+      - name: APIServers
+        rules:
+        - alert: InstanceAPIServerDown
+  ```
+
+- Применяем изменения
+
+  ```bash
+  helm upgrade prom kubernetes/Charts/prometheus -f kubernetes/Charts/prometheus/custom_values.yml --install
+  ```
+  
+  В результате в prometheus появятся правила:
+  
+  ![hw29-prometheus-alerts-rules](assets/hw29-prometheus-alerts-rules.png)
+  
+  ![hw29-prometheus-alerts](assets/hw29-prometheus-alerts.png)
+  
+  Пригодится: 
+  
+  https://www.robustperception.io/alerting-on-down-instances
+  
+  https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
