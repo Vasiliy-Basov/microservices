@@ -1,11 +1,11 @@
 variable "project" {
   # Описание переменной
   description = "Project ID"
-  default     = "micro-386716"
+  default     = "upheld-conduit-395408"
 }
 
 variable "region" {
   description = "Region"
   # Значение по умолчанию
-  default = "europe-west1"
+  default = "us-central1"
 }

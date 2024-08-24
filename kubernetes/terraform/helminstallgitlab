@@ -95,3 +95,12 @@ helm upgrade --install kibana elastic/kibana \
 
 # Просмотр событий
 kubectl -n kibana get events --sort-by='{.lastTimestamp}'
+
+# install kube-prometheus-stack
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+
+helm install [RELEASE_NAME] prometheus-community/kube-prometheus-stack
+
+Получаем значения values для изменения значений по умолчанию:
+helm inspect values prometheus-community/kube-prometheus-stack > values.yml

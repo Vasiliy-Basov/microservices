@@ -14,6 +14,18 @@
 		},
 		{
 			"path": "../Hugo"
+		},
+		{
+			"path": "../Dropbox/Projects/nginx_learning"
+		},
+		{
+			"path": "../Dropbox/Projects/vasiliy.basov.world"
+		},
+		{
+			"path": "../Dropbox/Projects/AstraLinux"
+		},
+		{
+			"path": "../dnla"
 		}
 	],
 	"settings": {

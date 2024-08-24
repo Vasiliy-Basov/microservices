@@ -19,7 +19,7 @@ resource "random_id" "bucket_prefix" {
 }
 
 resource "google_storage_bucket" "default" {
-  name          = "micro-bucket-${random_id.bucket_prefix.hex}"
+  name          = "kubernetes-${random_id.bucket_prefix.hex}"
   force_destroy = false      # не даст удалить bucket пока не удалим все внутренние объекты
   location      = "EU"       # https://cloud.google.com/storage/docs/locations
   storage_class = "STANDARD" # Supported values include: STANDARD, MULTI_REGIONAL, REGIONAL, NEARLINE, COLDLINE, ARCHIVE

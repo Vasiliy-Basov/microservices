@@ -1,9 +1,10 @@
+# Права необходимые для prometheus для работы в кластере (хелм чарт создаеи необходимые роли и role bunding)
 rbac:
   create: true
-
+# Если в кластере уже используется podSecurityPolicy то эту настройку нужно включить 
 podSecurityPolicy:
   enabled: false
-
+# Указываем необходимые доступы к private registry. imagePullSecrets позволяет использовать образы Prometheus из закрытых реестров.
 imagePullSecrets: []
 # - name: "image-pull-secret"
 
